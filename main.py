@@ -15,8 +15,8 @@ os.environ["PWDEBUG"] = "0"
 # 插件注册，参数分别为：插件名（唯一标识符）、作者、简介、版本号    
 @register("astrbot_plugin_bartender",
            "dragonuniverse8248",
-            "基于playwright无头浏览器库,对酒馆进行操作和交互,达成通过机器人游玩酒馆",
-            "1.0.0")
+            "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
+            "1.0.1")
 
 
 
@@ -45,6 +45,7 @@ class bartender_crawler(Star):
         else:
             exe_path = self.browser_dir / "chrome"
         # 如果没有找到打包的浏览器，降级为使用 Playwright 默认下载的浏览器
+        launch_exe = str(exe_path)
         launch_exe = str(exe_path) if exe_path.exists() else None
         if not launch_exe:
             logger.warning(f"未在 {self.browser_dir} 找到打包的浏览器，将尝试使用 Playwright 默认浏览器。")
@@ -64,7 +65,7 @@ class bartender_crawler(Star):
             await self.page.wait_for_selector(".welcomeHeaderVersionDisplay",state="visible")
             logger.info(f"{self.ST_URL}页面加载成功")
         except Exception as e:
-            logger.error(f"{self.ST_URL}页面加载失败: {e}")
+            logger.error(f"请检查是否目录下是否有浏览器文件browser文件，或系统安装playwright的运行环境并且下载了浏览器依赖，若无请查看说明进行安装: {e}")
 
     async def check_browser(self):
         """检查浏览器是否开启"""

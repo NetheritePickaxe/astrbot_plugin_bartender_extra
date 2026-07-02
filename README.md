@@ -15,7 +15,7 @@ _✨ [AstrBot](https://github.com/AstrBotDevs/AstrBot) 酒馆（SillyTavern）�
 
 **astrbot_plugin_bartender** 是一个基于 Playwright 无头浏览器库的 AstrBot 插件，通过对 [SillyTavern（酒馆）](https://github.com/SillyTavern/SillyTavern) 前端页面进行自动化操作与交互，实现在聊天机器人（QQ/微信等平台）中与酒馆 AI 角色进行对话。
 
-插件通过操控本地或远程部署的酒馆前端页面，完成消息发送、角色切换、角色卡管理、楼层删除等操作，让用户无需直接打开酒馆页面，即可在聊天平台上无缝体验 AI 角色扮演。
+插件通过操控本地或远程部署的酒馆前端页面，完成消息发送、角色切换、角色卡管理、楼层删除等操作，让用户无需直接打开酒馆页面，即可在聊天平台上无缝体验 AI 角色扮演，游戏体验高于现成的联机脚本。
 
 ### ✨ 核心特性
 
