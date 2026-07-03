@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 import time, aiohttp, platform
-import subprocess, os, shutil
+import subprocess, os, shutil, asyncio
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 from playwright.async_api import async_playwright
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
@@ -38,14 +39,25 @@ class bartender_crawler(Star):
 
     async def initialize_browser(self):
         """使用 Playwright 来启动浏览器 手动管理线程"""
+        parsed = urlparse(self.ST_URL) # 解析目标地址和端口
+        host = parsed.hostname or parsed.path.split(":")[0]
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        try: # 快速连通性检查（TCP）
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port), timeout=3
+            )
+            writer.close()
+            await writer.wait_closed()
+        except Exception as e:
+            logger.error(f"目标地址 {self.ST_URL} 不可达（host={host}, port={port}），请确认酒馆已启动或配置正确。错误：{e}")
+            return  # 不可达直接退出函数，不再启动浏览器
         await self.close_browser() # 判断并且关闭浏览器
         self.p = await async_playwright().start()
         if os.name == 'nt':
             exe_path = self.browser_dir / "chrome.exe"
         else:
             exe_path = self.browser_dir / "chrome"
-        # 如果没有找到打包的浏览器，降级为使用 Playwright 默认下载的浏览器
-        launch_exe = str(exe_path)
+        launch_exe = str(exe_path) # 如果没有找到打包的浏览器，降级为使用 Playwright 默认下载的浏览器
         launch_exe = str(exe_path) if exe_path.exists() else None
         if not launch_exe:
             logger.warning(f"未在 {self.browser_dir} 找到打包的浏览器，将尝试使用 Playwright 默认浏览器。")
