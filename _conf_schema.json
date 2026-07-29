@@ -21,8 +21,8 @@
     "browser_delay":{
         "description":"操作延迟",
         "type": "int",
-        "hint": "每次点击和查找操作之间的延迟",
-        "default": "0"
+        "hint": "每次点击和查找操作之间的延迟/单位毫秒",
+        "default": "50"
     },
     "upload_interval":{
         "description":"角色卡间隔",
