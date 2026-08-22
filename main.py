@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import re, json
 import time, aiohttp, platform
-import subprocess, os, shutil, asyncio
+import subprocess, os, shutil, asyncio, functools
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
@@ -19,6 +19,28 @@ except ImportError:
 
 PLUGIN_NAME = "astrbot_plugin_bartender_extra"
 
+# 聊天模式下放行的本插件指令名集合（首词命中则不拦截，交给指令分发）
+CHAT_MODE_COMMANDS = frozenset({
+    "酒", "酒切换", "酒删除", "酒加卡", "酒删卡", "酒重生成", "酒续写", "酒备选",
+    "酒停止生成", "酒关闭", "酒新建", "酒导出", "酒统计", "酒改名", "酒查看",
+    "酒人设", "酒状态", "酒帮助", "酒启动", "酒重置",
+    "酒进程", "酒开始", "酒结束", "酒权限",
+})
+# 注：酒人设 修改 / 酒人设 解绑 为 酒人设 子命令，首词「酒人设」已在集合内
+
+
+def _access_required(handler):
+    """指令访问控制装饰器：按黑/白名单与管理员模式校验，不通过则直接回复原因"""
+    @functools.wraps(handler)
+    async def wrapper(self, event: AstrMessageEvent):
+        ok, reason = self._check_access(event)
+        if not ok:
+            yield event.plain_result(reason)
+            return
+        async for result in handler(self, event):
+            yield result
+    return wrapper
+
 # 设置环境变量以启用 Playwright 的调试模式，0为正常模式，1为调试模式
 os.environ["PWDEBUG"] = "0"
 
@@ -26,7 +48,7 @@ os.environ["PWDEBUG"] = "0"
 @register(PLUGIN_NAME,
            "dragonuniverse8248编写 GML5.2 & deepseek指导",
             "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
-             "1.3.0")
+             "1.5.0")
 
 
 
@@ -44,6 +66,9 @@ class bartender_crawler(Star):
         self.cache_dir = Path("data/temp/astrbot_plugin_bartender_extra") # 初始化本地缓存文件夹路径
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.waiting_sessions = {} # 初始化会话状态字典，用于记录哪些用户正在等待发送图片，格式为: {"群号_用户ID": 过期时间戳}
+        self.chat_mode_creators = {} # 酒馆聊天模式：创建者键"{群号}_{用户ID}" -> ("user"|"group", scope)
+        self.chat_mode_user_keys = set() # 活跃的按用户聊天模式键 "{群号}_{用户ID}"
+        self.chat_mode_group_keys = {} # 活跃的按群聊天模式键 "{群号}" -> 创建者键
         self.plugin_dir = Path(__file__).parent # 获取当前目录
         self.browser_dir = self.plugin_dir / "browser"
         self.persona_bindings = self._load_persona_bindings() # 用户人设绑定字典，格式为: {"群号_用户ID": {"name": 人设名, "avatar_id": 人设头像ID}}
@@ -66,6 +91,20 @@ class bartender_crawler(Star):
             ["POST"],
             "启动插件目录中的酒馆",
         )
+
+    def _check_access(self, event):
+        """访问控制：黑名单优先、白名单限制群聊、管理员模式要求管理员；返回 (是否通过, 原因)"""
+        gid = event.get_group_id()
+        gid_s = str(gid) if gid is not None else ""
+        blacklist = [str(x) for x in (self.config.get('blacklist_groups') or [])]
+        whitelist = [str(x) for x in (self.config.get('whitelist_groups') or [])]
+        if gid_s and gid_s in blacklist: # 群黑名单优先（私聊不适用群名单）
+            return False, "本群已被加入黑名单，禁止使用酒命令"
+        if gid_s and whitelist and gid_s not in whitelist: # 白名单非空时仅允许列内群聊
+            return False, "本群不在白名单内，禁止使用酒命令"
+        if self.config.get('admin_only') and not event.is_admin(): # 管理员模式
+            return False, "管理员模式已开启，该命令仅管理员可用"
+        return True, ""
 
     async def page_info(self):
         """返回酒馆地址、连通性、是否携带捆绑酒馆"""
@@ -450,7 +489,7 @@ class bartender_crawler(Star):
         if not ok and bound.get("name") and target != bound.get("name"):
             ok, _ = await self.switch_persona(bound.get("name")) # 头像ID失效则退回按名称匹配
         if not ok:
-            return False, f"人设切换失败：{bound.get('name')}，请发送 /酒人设解绑 解除后重新绑定"
+            return False, f"人设切换失败：{bound.get('name')}，请发送 /酒人设 解绑 解除后重新绑定"
         return True, ""
 
     async def get_new_message(self, bot_id):
@@ -1101,7 +1140,7 @@ class bartender_crawler(Star):
     #     yield event.plain_result(f"喵~这是测试指令的回复")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
-    @filter.command("酒停止")
+    @filter.command("酒关闭")
     async def command_close_browser(self, event: AstrMessageEvent):
         """关闭插件浏览器并清理后台所有 chrome/chromium 进程"""
         await bartender_crawler.close_browser(self) # 先优雅关闭插件自己的浏览器
@@ -1109,6 +1148,7 @@ class bartender_crawler(Star):
         yield event.plain_result("已关闭浏览器并清理所有后台 Chrome/Chromium 进程")
 
     @filter.command("酒")
+    @_access_required
     async def command_send_message(self, event: AstrMessageEvent):
         """酒馆发送信息"""
         if self.status_running:
@@ -1148,6 +1188,7 @@ class bartender_crawler(Star):
             yield event.plain_result("正在Shake~，请稍作等待")
 
     @filter.command("酒人设")
+    @_access_required
     async def command_persona_bind(self, event: AstrMessageEvent):
         """绑定当前用户的人设；无参数时查看绑定状态与人设列表"""
         if self.status_running:
@@ -1158,6 +1199,35 @@ class bartender_crawler(Star):
                 user_message = event.message_str.strip()
                 tokens = user_message.split()
                 if len(tokens) > 1: # 绑定模式：/酒人设 [人设名或头像ID]
+                    if tokens[1] == "修改": # /酒人设 修改 [名字] [内容]：仅名字删除，不存在则新建
+                        if len(tokens) < 3:
+                            yield event.plain_result("请输入：/酒人设 修改 [名字] [内容]（仅名字则删除该人设）")
+                            return
+                        persona_name = tokens[2]
+                        description = " ".join(tokens[3:]).strip()
+                        await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息
+                        personas, _ = await bartender_crawler.get_personas(self) # 判断人设是否存在
+                        exists = bool(personas is not None and persona_name in personas)
+                        if exists:
+                            if description:
+                                ok, msg = await bartender_crawler.set_persona_description(self, persona_name, description)
+                                action = "更新描述"
+                            else:
+                                ok, msg = await bartender_crawler.delete_persona(self, persona_name)
+                                action = "删除"
+                        else:
+                            ok, msg = await bartender_crawler.create_persona(self, persona_name, description)
+                            action = "新建"
+                        if ok:
+                            if action == "删除":
+                                yield event.plain_result(f"已删除人设：{persona_name}")
+                            elif action == "新建" and not description:
+                                yield event.plain_result(f"已新建空人设：{persona_name}")
+                            else:
+                                yield event.plain_result(f"已{action}人设：{persona_name}")
+                        else:
+                            yield event.plain_result(f"{action}人设失败: {msg}")
+                        return
                     persona_name = " ".join(tokens[1:])
                     if persona_name == "解绑": # 兼容 /酒人设 解绑 写法
                         if session_key in self.persona_bindings:
@@ -1198,28 +1268,8 @@ class bartender_crawler(Star):
         else:
             yield event.plain_result("等待其他操作完成")
 
-    @filter.command("酒人设解绑")
-    async def command_persona_unbind(self, event: AstrMessageEvent):
-        """解除当前用户绑定的人设"""
-        if self.status_running:
-            self.status_running = False
-            try:
-                session_key = self.get_persona_session_key(event)
-                if session_key in self.persona_bindings:
-                    del self.persona_bindings[session_key]
-                    self._save_persona_bindings()
-                    yield event.plain_result("已解除绑定人设")
-                else:
-                    yield event.plain_result("当前未绑定人设")
-            except Exception as e:
-                logger.error(f"酒人设解绑指令异常: {e}")
-                yield event.plain_result("指令执行异常，请稍后重试")
-            finally:
-                self.status_running = True
-        else:
-            yield event.plain_result("等待其他操作完成")
-
-    @filter.command("酒重新")
+    @filter.command("酒重生成")
+    @_access_required
     async def command_rest_message(self, event: AstrMessageEvent):
         """重新生成当前楼层"""
         if self.status_running:
@@ -1245,7 +1295,7 @@ class bartender_crawler(Star):
                 else:
                     yield event.plain_result("禁止输入为空")
             except Exception as e:
-                logger.error(f"酒重新指令异常: {e}")
+                logger.error(f"酒重生成指令异常: {e}")
                 yield event.plain_result("指令执行异常，请稍后重试")
             finally:
                 await bartender_crawler.close_browser_auto(self)
@@ -1254,6 +1304,7 @@ class bartender_crawler(Star):
             yield event.plain_result("正在Shake~，请稍作等待")
 
     @filter.command("酒查看")
+    @_access_required
     async def command_get_message(self, event: AstrMessageEvent):
         """获取最新楼层；引用消息时可定位其楼层数"""
         if self.status_running:
@@ -1295,6 +1346,7 @@ class bartender_crawler(Star):
             yield event.plain_result("等待其他操作完成")
 
     @filter.command("酒状态")
+    @_access_required
     async def command_get_status(self, event: AstrMessageEvent):
         """获取当前所有状态"""
         if self.status_running:
@@ -1326,6 +1378,7 @@ class bartender_crawler(Star):
             yield event.plain_result("等待其他操作完成")
 
     @filter.command("酒切换")
+    @_access_required
     async def command_chat_switch(self, event: AstrMessageEvent):
         """酒馆切换角色卡"""
         if self.status_running:
@@ -1351,6 +1404,7 @@ class bartender_crawler(Star):
             yield event.plain_result("等待其他操作完成")
 
     @filter.command("酒删除")
+    @_access_required
     async def command_del_message(self, event: AstrMessageEvent):
         """删除聊天楼层"""
         if self.status_running:
@@ -1389,6 +1443,7 @@ class bartender_crawler(Star):
             yield event.plain_result("等待其他操作完成")
 
     @filter.command("酒加卡")
+    @_access_required
     async def upload_chat_command(self, event: AstrMessageEvent):
         """添加角色卡至酒馆"""
         if self.status_running: # 判断运行状态
@@ -1413,6 +1468,7 @@ class bartender_crawler(Star):
 
 
     @filter.command("酒删卡")
+    @_access_required
     async def del_chat_command(self, event: AstrMessageEvent):
         """删除聊天楼层"""
         if self.status_running:
@@ -1502,13 +1558,17 @@ class bartender_crawler(Star):
         self.cache_dir = Path("data/temp/astrbot_plugin_bartender_extra") # 初始化本地缓存文件夹路径
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.waiting_sessions = {} # 初始化会话状态字典，用于记录哪些用户正在等待发送图片，格式为: {"群号_用户ID": 过期时间戳}
+        self.chat_mode_creators = {} # 清空酒馆聊天模式创建记录
+        self.chat_mode_user_keys = set() # 清空按用户聊天模式
+        self.chat_mode_group_keys = {} # 清空按群聊天模式
         self.config['now_chats_name'] = "Seraphina" # 当前角色切换至默认
         await bartender_crawler.get_all_chats(self) # 重新获取所有角色
         await bartender_crawler.switch_chats(self, "Seraphina") # 切换至默认卡
         await bartender_crawler.close_browser_auto(self)
         yield event.plain_result("已重置获取所有变量")
 
-    @filter.command("酒新聊")
+    @filter.command("酒新建")
+    @_access_required
     async def command_new_chat(self, event: AstrMessageEvent):
         """与当前角色开始新对话"""
         if self.status_running:
@@ -1523,7 +1583,7 @@ class bartender_crawler(Star):
                     remaining = await bartender_crawler.get_now_floor(self, 0) # 获取当前楼层数
                     yield event.plain_result(f"已开始新对话，当前共{remaining}楼层")
             except Exception as e:
-                logger.error(f"酒新聊指令异常: {e}")
+                logger.error(f"酒新建指令异常: {e}")
                 yield event.plain_result("指令执行异常，请稍后重试")
             finally:
                 await bartender_crawler.close_browser_auto(self)
@@ -1531,7 +1591,8 @@ class bartender_crawler(Star):
         else:
             yield event.plain_result("正在Shake~，请稍作等待")
 
-    @filter.command("酒继续")
+    @filter.command("酒续写")
+    @_access_required
     async def command_continue_message(self, event: AstrMessageEvent):
         """续写最新楼层"""
         if self.status_running:
@@ -1557,7 +1618,7 @@ class bartender_crawler(Star):
                 else:
                     yield event.plain_result("无角色卡")
             except Exception as e:
-                logger.error(f"酒继续指令异常: {e}")
+                logger.error(f"酒续写指令异常: {e}")
                 yield event.plain_result("指令执行异常，请稍后重试")
             finally:
                 await bartender_crawler.close_browser_auto(self)
@@ -1566,6 +1627,7 @@ class bartender_crawler(Star):
             yield event.plain_result("正在Shake~，请稍作等待")
 
     @filter.command("酒停止生成")
+    @_access_required
     async def command_stop_generation(self, event: AstrMessageEvent):
         """中断当前酒馆生成"""
         if self.status_running:
@@ -1583,7 +1645,8 @@ class bartender_crawler(Star):
         else:
             yield event.plain_result("正在Shake~，请稍作等待")
 
-    @filter.command("酒swipe")
+    @filter.command("酒备选")
+    @_access_required
     async def command_swipe_message(self, event: AstrMessageEvent):
         """切换上一条/下一条备选回复，参数 上/下，默认下"""
         if self.status_running:
@@ -1616,7 +1679,7 @@ class bartender_crawler(Star):
                 else:
                     yield event.plain_result("无角色卡")
             except Exception as e:
-                logger.error(f"酒swipe指令异常: {e}")
+                logger.error(f"酒备选指令异常: {e}")
                 yield event.plain_result("指令执行异常，请稍后重试")
             finally:
                 await bartender_crawler.close_browser_auto(self)
@@ -1625,6 +1688,7 @@ class bartender_crawler(Star):
             yield event.plain_result("正在Shake~，请稍作等待")
 
     @filter.command("酒导出")
+    @_access_required
     async def command_export_chat(self, event: AstrMessageEvent):
         """导出当前聊天记录为文件发送"""
         if self.status_running:
@@ -1648,6 +1712,7 @@ class bartender_crawler(Star):
             yield event.plain_result("正在Shake~，请稍作等待")
 
     @filter.command("酒统计")
+    @_access_required
     async def command_get_stats(self, event: AstrMessageEvent):
         """查看当前角色聊天统计"""
         if self.status_running:
@@ -1689,6 +1754,7 @@ class bartender_crawler(Star):
             yield event.plain_result("正在Shake~，请稍作等待")
 
     @filter.command("酒改名")
+    @_access_required
     async def command_rename_character(self, event: AstrMessageEvent):
         """重命名角色卡：/酒改名 旧名 新名"""
         if self.status_running:
@@ -1723,52 +1789,113 @@ class bartender_crawler(Star):
         else:
             yield event.plain_result("正在Shake~，请稍作等待")
 
-    @filter.command("酒人设修改")
-    async def command_modify_persona(self, event: AstrMessageEvent):
-        """新建/修改/删除人设：/酒人设修改 [名字] [内容]；仅名字则删除，不存在则新建"""
-        if self.status_running:
-            self.status_running = False
-            try:
-                await bartender_crawler.open_browser_auto(self, False)
-                user_message = event.message_str.strip()
-                tokens = user_message.split()
-                if len(tokens) < 2:
-                    yield event.plain_result("请输入：/酒人设修改 [名字] [内容]（仅名字则删除该人设）")
-                    return
-                persona_name = tokens[1]
-                description = " ".join(tokens[2:]).strip()
-                await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息
-                personas, _ = await bartender_crawler.get_personas(self) # 判断人设是否存在
-                exists = bool(personas is not None and persona_name in personas)
-                if exists:
-                    if description:
-                        ok, msg = await bartender_crawler.set_persona_description(self, persona_name, description)
-                        action = "更新描述"
-                    else:
-                        ok, msg = await bartender_crawler.delete_persona(self, persona_name)
-                        action = "删除"
-                else:
-                    ok, msg = await bartender_crawler.create_persona(self, persona_name, description)
-                    action = "新建"
-                if ok:
-                    if action == "删除":
-                        yield event.plain_result(f"已删除人设：{persona_name}")
-                    elif action == "新建" and not description:
-                        yield event.plain_result(f"已新建空人设：{persona_name}")
-                    else:
-                        yield event.plain_result(f"已{action}人设：{persona_name}")
-                else:
-                    yield event.plain_result(f"{action}人设失败: {msg}")
-            except Exception as e:
-                logger.error(f"酒人设修改指令异常: {e}")
-                yield event.plain_result("指令执行异常，请稍后重试")
-            finally:
-                await bartender_crawler.close_browser_auto(self)
-                self.status_running = True
+    @filter.command("酒开始")
+    @_access_required
+    async def command_start_chat_mode(self, event: AstrMessageEvent):
+        """开启酒馆聊天模式：直接发送消息即转酒馆，无需 /酒 前缀；带"群聊"按当前群生效"""
+        group_id = event.get_group_id()
+        user_id = event.get_sender_id()
+        creator = f"{group_id}_{user_id}"
+        if creator in self.chat_mode_creators: # 开始者只能一次，不能同时用户+群聊
+            yield event.plain_result("您已开启过酒馆聊天模式，请先 /酒结束")
+            return
+        user_message = event.message_str.strip()
+        is_group_mode = "群聊" in user_message.split()
+        if is_group_mode and not group_id: # 私聊不支持群聊模式
+            yield event.plain_result("私聊不支持群聊模式，已按用户开启")
+            is_group_mode = False
+        if is_group_mode:
+            gid = str(group_id)
+            if gid in self.chat_mode_group_keys: # 本群已由他人开启群聊模式
+                yield event.plain_result("本群已开启群聊模式")
+                return
+            self.chat_mode_group_keys[gid] = creator
+            self.chat_mode_creators[creator] = ("group", gid)
+            scope = "本群"
         else:
-            yield event.plain_result("正在Shake~，请稍作等待")
+            user_key = f"{group_id}_{user_id}"
+            self.chat_mode_user_keys.add(user_key)
+            self.chat_mode_creators[creator] = ("user", user_key)
+            scope = "本人"
+        chat = self.config.get('now_chats_name') or "无角色卡"
+        yield event.plain_result(
+            f"已进入酒馆聊天模式（{scope}）\n当前角色：{chat}\n直接发送消息即可（无需 /酒 前缀）\n/酒结束 退出"
+        )
+
+    @filter.command("酒结束")
+    @_access_required
+    async def command_end_chat_mode(self, event: AstrMessageEvent):
+        """结束调用者自己创建的酒馆聊天模式"""
+        group_id = event.get_group_id()
+        user_id = event.get_sender_id()
+        creator = f"{group_id}_{user_id}"
+        if creator not in self.chat_mode_creators:
+            yield event.plain_result("您未开启酒馆聊天模式")
+            return
+        mode, scope = self.chat_mode_creators.pop(creator) # 结束这个用户创建的开始
+        if mode == "user":
+            self.chat_mode_user_keys.discard(scope)
+        else:
+            self.chat_mode_group_keys.pop(scope, None)
+        yield event.plain_result("已退出酒馆聊天模式")
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("酒权限")
+    async def command_permissions(self, event: AstrMessageEvent):
+        """管理酒命令访问权限：管理[开/关] / 白名单[群号|移除 群号] / 黑名单[群号|移除 群号]"""
+        user_message = event.message_str.strip()
+        tokens = user_message.split()
+        if len(tokens) < 2: # 无子命令，查看当前设置
+            admin_only = bool(self.config.get('admin_only'))
+            whitelist = [str(x) for x in (self.config.get('whitelist_groups') or [])]
+            blacklist = [str(x) for x in (self.config.get('blacklist_groups') or [])]
+            yield event.plain_result(
+                f"当前权限设置\n管理员模式：{'开' if admin_only else '关'}\n"
+                f"白名单群聊：{', '.join(whitelist) or '无'}\n"
+                f"黑名单群聊：{', '.join(blacklist) or '无'}\n"
+                f"用法：/酒权限 管理 开|关｜/酒权限 白名单 [群号|移除 群号]｜/酒权限 黑名单 [群号|移除 群号]"
+            )
+            return
+        sub = tokens[1]
+        if sub == "管理":
+            if len(tokens) < 3:
+                yield event.plain_result(f"管理员模式当前为：{'开' if self.config.get('admin_only') else '关'}")
+                return
+            sw = tokens[2]
+            if sw == "开":
+                self.config['admin_only'] = True
+            elif sw == "关":
+                self.config['admin_only'] = False
+            else:
+                yield event.plain_result("参数错误，用法：/酒权限 管理 开|关")
+                return
+            self.config.save_config()
+            yield event.plain_result(f"已{'开启' if self.config['admin_only'] else '关闭'}管理员模式（所有酒命令{'仅管理员' if self.config['admin_only'] else '所有人'}可用）")
+            return
+        if sub in ("白名单", "黑名单"):
+            key = 'whitelist_groups' if sub == "白名单" else 'blacklist_groups'
+            groups = [str(x) for x in (self.config.get(key) or [])]
+            if len(tokens) >= 4 and tokens[2] in ("移除", "删除", "-"):
+                gid = tokens[3]
+                groups = [g for g in groups if g != gid]
+                self.config[key] = groups
+                self.config.save_config()
+                yield event.plain_result(f"已从{sub}移除群聊：{gid}")
+                return
+            if len(tokens) >= 3 and tokens[2] not in ("移除", "删除", "-"):
+                gid = tokens[2]
+                if gid not in groups:
+                    groups.append(gid)
+                    self.config[key] = groups
+                    self.config.save_config()
+                yield event.plain_result(f"已将群聊 {gid} 加入{sub}，当前{sub}：{', '.join(groups) or '无'}")
+                return
+            yield event.plain_result(f"{sub}当前群聊：{', '.join(groups) or '无'}")
+            return
+        yield event.plain_result("未知子命令，用法：/酒权限 管理 开|关｜/酒权限 白名单 [群号|移除 群号]｜/酒权限 黑名单 [群号|移除 群号]")
 
     @filter.command("酒帮助")
+    @_access_required
     async def help_command(self, event: AstrMessageEvent):
         """指令帮助指南"""
         yield event.plain_result(
@@ -1778,23 +1905,26 @@ class bartender_crawler(Star):
             +"/酒删除 [楼层数]\n"+"删除楼层，当不输入任何楼层数时默认删除一层，建议两层进行删除包括用户输入\n"
             +"/酒加卡 [图片] or /酒加卡\n"+"添加角色卡到酒馆，支持直接附带图片、引用(回复)含图消息、或指令后计时内单发图片三种方式\n"
             +"/酒删卡 [名字]\n"+"删除指定角色卡，若删除角色卡为当前角色卡则自动切换至默认，禁止删除默认卡\n"
-            +"/酒重新\n"+"将最新楼层的输入重新生成并且返回，不输入任何参数\n"
-            +"/酒继续\n"+"续写最新楼层，让AI在最新回复后继续生成内容\n"
-            +"/酒swipe [上|下]\n"+"切换最新楼层的上一条/下一条备选回复，默认下（下一条会重新生成）\n"
+            +"/酒重生成\n"+"将最新楼层的输入重新生成并且返回，不输入任何参数\n"
+            +"/酒续写\n"+"续写最新楼层，让AI在最新回复后继续生成内容\n"
+            +"/酒备选 [上|下]\n"+"切换最新楼层的上一条/下一条备选回复，默认下（下一条会重新生成）\n"
             +"/酒停止生成\n"+"中断当前正在进行的酒馆生成\n"
-            +"/酒新聊\n"+"与当前角色开始新对话（清空当前楼层）\n"
+            +"/酒新建\n"+"与当前角色开始新对话（清空当前楼层）\n"
             +"/酒导出\n"+"导出当前聊天记录为JSONL文件发送\n"
             +"/酒统计\n"+"查看当前角色的聊天统计（消息数/字数/生成耗时等）\n"
             +"/酒改名 [旧名] [新名]\n"+"重命名指定角色卡，禁止修改默认角色名\n"
             +"/酒查看\n"+"查看最新楼层的消息，当最新为用户输入时也会返回；引用一条消息后发送本指令，可定位其对应的楼层数\n"
-            +"/酒人设 [名字]\n"+"绑定当前用户的人设（酒馆 User Persona），之后 /酒 与 /酒重新 会先切换到你的人设再操作；不输入名字时查看绑定状态与人设列表\n"
-            +"/酒人设修改 [名字] [内容]\n"+"新建或修改人设：人设不存在则新建（仅名字为空人设），存在且有内容则改描述，存在且无内容则删除\n"
-            +"/酒人设解绑\n"+"解除当前用户绑定的人设\n"
+            +"/酒人设 [名字]\n"+"绑定当前用户的人设（酒馆 User Persona），之后 /酒 与 /酒重生成 会先切换到你的人设再操作；不输入名字时查看绑定状态与人设列表；子命令：/酒人设 修改 [名字] [内容]、/酒人设 解绑\n"
+            +"/酒人设 修改 [名字] [内容]\n"+"新建或修改人设：人设不存在则新建（仅名字为空人设），存在且有内容则改描述，存在且无内容则删除\n"
+            +"/酒人设 解绑\n"+"解除当前用户绑定的人设\n"
+            +"/酒开始 [群聊]\n"+"开启酒馆聊天模式：之后直接发消息即转酒馆，无需 /酒 前缀；带\"群聊\"按当前群生效，无参按本人\n"
+            +"/酒结束\n"+"结束自己创建的酒馆聊天模式\n"
             +"/酒状态\n"+"查看当前角色卡和角色卡列表以及浏览器的状态\n"
             +"/酒帮助\n"+"你现在不就在看我，你问我？\n"
             +"/酒启动[管理员指令]\n"+"用于启动插件目录中的酒馆，启动后自动连接\n"
             +"/酒重置[管理员指令]\n"+"用于重置所有全局变量，当变量混乱无法使用时，可进行尝试\n"
-            +"/酒停止[管理员指令]\n"+"关闭插件浏览器并清理后台所有 chrome/chromium 进程\n"
+            +"/酒关闭[管理员指令]\n"+"关闭插件浏览器并清理后台所有 chrome/chromium 进程\n"
+            +"/酒权限[管理员指令]\n"+"管理酒命令访问权限：管理 开|关（管理员模式）、白名单 [群号|移除 群号]、黑名单 [群号|移除 群号]\n"
             +"/酒进程[管理员指令]\n"+"查看当前 chrome/chromium 进程数量与浏览器状态"
             )
 
@@ -1804,6 +1934,55 @@ class bartender_crawler(Star):
         messages = event.get_messages() # 过滤掉空白消息
         if not messages:
             return
+        # —— 酒馆聊天模式：纯文本直接转发酒馆，无需 /酒 前缀 ——
+        group_id = event.get_group_id()
+        user_id = event.get_sender_id()
+        in_chat_mode = (f"{group_id}_{user_id}" in self.chat_mode_user_keys) or (
+            bool(group_id) and str(group_id) in self.chat_mode_group_keys
+        )
+        if in_chat_mode:
+            msg = event.message_str.strip()
+            first = msg.split()[0].lstrip("/") if msg else ""
+            is_plain_text = bool(msg) and not any(isinstance(c, (Image, File)) for c in messages)
+            if first not in CHAT_MODE_COMMANDS and is_plain_text: # 非酒指令的纯文本才拦截
+                access_ok, access_reason = self._check_access(event) # 聊天模式同样受黑/白名单与管理员模式约束
+                if not access_ok:
+                    event.stop_event()
+                    yield event.plain_result(access_reason)
+                    return
+                event.stop_event() # 阻止其他插件/LLM 处理
+                if self.status_running: # 与其它指令互斥，避免并发操作同一个浏览器
+                    self.status_running = False
+                    try:
+                        await bartender_crawler.open_browser_auto(self, False)
+                        ok_persona, err_persona = await bartender_crawler.apply_user_persona(self, event) # 应用该用户绑定的人设
+                        if not ok_persona:
+                            yield event.plain_result(err_persona)
+                            return
+                        await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息
+                        send_result = await bartender_crawler.send_message(self, msg) # 整条消息作为内容发送
+                        if send_result != "正常":
+                            yield event.plain_result(f"发送失败: {send_result}")
+                            return
+                        message_text = await bartender_crawler.get_new_message_text(self) # 获取最新消息文本
+                        remaining = await bartender_crawler.get_now_floor(self, 0) # 获取当前楼层数
+                        if message_text:
+                            if self.config.get('show_floor_count'):
+                                yield event.plain_result(f"当前共{remaining}楼层\n\n{message_text}")
+                            else:
+                                yield event.plain_result(message_text)
+                        else:
+                            yield event.plain_result("合并消息为空")
+                    except Exception as e:
+                        logger.error(f"聊天模式转发异常: {e}")
+                        yield event.plain_result("指令执行异常，请稍后重试")
+                    finally:
+                        await bartender_crawler.close_browser_auto(self)
+                        self.status_running = True
+                else:
+                    yield event.plain_result("正在Shake~，请稍作等待")
+                return
+            # 酒指令 / 含图片 / 空白：落至下方等待逻辑或放行
         session_key = f"{event.get_group_id()}_{event.get_sender_id()}" 
         if session_key not in self.waiting_sessions: # 如果不在等待列表，直接放行
             return
