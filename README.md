@@ -1,6 +1,6 @@
 <div align="center">
 
-# astrbot_plugin_bartender
+# astrbot_plugin_bartender_extra
 
 _✨ [AstrBot](https://github.com/AstrBotDevs/AstrBot) 酒馆（SillyTavern）交互插件 ✨_
 
@@ -13,7 +13,7 @@ _✨ [AstrBot](https://github.com/AstrBotDevs/AstrBot) 酒馆（SillyTavern）�
 
 ## 🤝 介绍
 
-**astrbot_plugin_bartender** 是一个基于 Playwright 无头浏览器库的 AstrBot 插件，通过对 [SillyTavern（酒馆）](https://github.com/SillyTavern/SillyTavern) 前端页面进行自动化操作与交互，实现在聊天机器人（QQ/微信等平台）中与酒馆 AI 角色进行对话。
+**astrbot_plugin_bartender_extra** 是一个基于 Playwright 无头浏览器库的 AstrBot 插件，通过对 [SillyTavern（酒馆）](https://github.com/SillyTavern/SillyTavern) 前端页面进行自动化操作与交互，实现在聊天机器人（QQ/微信等平台）中与酒馆 AI 角色进行对话。
 
 插件通过操控本地或远程部署的酒馆前端页面，完成消息发送、角色切换、角色卡管理、楼层删除等操作，让用户无需直接打开酒馆页面，即可在聊天平台上无缝体验 AI 角色扮演，游戏体验高于现成的联机脚本。
 
@@ -55,13 +55,13 @@ _✨ [AstrBot](https://github.com/AstrBotDevs/AstrBot) 酒馆（SillyTavern）�
 
 **Windows 用户：**
 
-1. 打开插件目录（例如 `AstrBot/data/plugins/astrbot_plugin_bartender/`）
+1. 打开插件目录（例如 `AstrBot/data/plugins/astrbot_plugin_bartender_extra/`）
 2. 双击运行 **`download_browser.bat`**
 3. 等待脚本自动下载并解压，控制台会显示实时进度条
 4. 完成后，插件目录下会出现一个 **`browser/`** 文件夹，里面包含 `chrome.exe` 和大量配套文件
 
 ```
-astrbot_plugin_bartender/
+astrbot_plugin_bartender_extra/
 ├── download_browser.bat   ← 双击这个！
 ├── download_browser.py
 ├── download_browser.sh
@@ -77,7 +77,7 @@ astrbot_plugin_bartender/
 
 1. 打开终端，进入插件目录：
    ```bash
-   cd AstrBot/data/plugins/astrbot_plugin_bartender
+   cd AstrBot/data/plugins/astrbot_plugin_bartender_extra
    ```
 2. 运行下载脚本：
    ```bash
@@ -93,12 +93,12 @@ astrbot_plugin_bartender/
 
 ### 📦 方式二：手动下载 GitHub Releases 压缩包
 
-1. 前往 [GitHub Releases](https://github.com/dragonuniverse8248/astrbot_plugin_bartender/releases) 页面
+1. 前往 [GitHub Releases](https://github.com/dragonuniverse8248/astrbot_plugin_bartender_extra/releases) 页面
 2. 下载 `browser.zip` 压缩包
 3. 将压缩包解压到插件根目录，确保最终目录结构为：
 
 ```
-astrbot_plugin_bartender/
+astrbot_plugin_bartender_extra/
 └── browser/
     ├── chrome.exe    # Windows
     └── chrome        # Linux/macOS（以及 chrome 相关 .dll/.pak 等文件）
@@ -120,13 +120,13 @@ playwright install chromium
 
 ## 📦 安装插件
 
-- 可以直接在 AstrBot 的插件市场搜索 `astrbot_plugin_bartender`，点击安装，耐心等待安装完成即可
+- 可以直接在 AstrBot 的插件市场搜索 `astrbot_plugin_bartender_extra`，点击安装，耐心等待安装完成即可
 - 也可以手动安装：
 
 ```bash
 # 克隆仓库到插件目录
 cd /AstrBot/data/plugins
-git clone https://github.com/dragonuniverse8248/astrbot_plugin_bartender
+git clone https://github.com/dragonuniverse8248/astrbot_plugin_bartender_extra
 
 # 控制台重启AstrBot
 ```
@@ -140,15 +140,16 @@ git clone https://github.com/dragonuniverse8248/astrbot_plugin_bartender
 | `/酒 [文字内容]` | 要发送的消息文本 | 向当前酒馆角色发送消息并获取 AI 回复，不支持图片输入 |
 | `/酒切换 [名字]` | 目标角色卡名称 | 切换当前对话角色卡，名称需在角色列表中 |
 | `/酒删除 [楼层数]` | 要删除的楼层数量（可选，默认1） | 删除指定数量的最新聊天楼层，建议至少2层（含用户输入） |
-| `/酒加卡 [图片]` | PNG 格式角色卡图片 | 上传角色卡到酒馆；可附带图片一起发送，也可先发指令后补发图片 |
+| `/酒加卡 [图片]` | PNG 格式角色卡图片 | 上传角色卡到酒馆；支持直接附带图片、引用含图消息、或先发指令后计时内补发图片 |
 | `/酒删卡 [名字]` | 目标角色卡名称 | 删除指定角色卡，若删除的是当前角色则自动切换至默认卡 |
 | `/酒重新` | 无 | 重新生成当前最新楼层的 AI 回复 |
-| `/酒查看` | 无 | 查看最新楼层的消息并与当前楼层总数 |
+| `/酒查看` | 无 | 查看最新楼层；引用一条消息后发送可定位其楼层数 |
 | `/酒状态` | 无 | 查看当前角色卡、角色列表及浏览器连接状态 |
-| `/酒关闭` | 无 | 调试指令，手动关闭运行中的浏览器实例 |
 | `/酒帮助` | 无 | 显示所有指令的帮助信息 |
+| `/酒启动` | 🔒 管理员 | 启动插件目录中的 SillyTavern 酒馆服务，启动后自动连接浏览器 |
+| `/酒停止` | 🔒 管理员 | 关闭插件浏览器并清理后台所有 Chrome/Chromium 进程 |
 | `/酒重置` | 🔒 管理员 | 重置插件所有全局变量，恢复默认角色，重新获取角色列表 |
-| `/酒进程` | 🔒 管理员 | 强制清理后台所有 Chrome/Chromium 进程（需在配置中开启） |
+| `/酒进程` | 🔒 管理员 | 查看当前 Chrome/Chromium 进程数量与插件浏览器状态 |
 
 > 🔒 标记为管理员指令，仅管理员可执行。
 
@@ -180,9 +181,8 @@ git clone https://github.com/dragonuniverse8248/astrbot_plugin_bartender
 | `browser_delay` | int | `0` | 浏览器操作的慢动作延迟（毫秒），用于调试 |
 | `thread_safe_mode` | bool | `false` | 线程安全模式：每次操作前后自动开启/关闭浏览器 |
 | `upload_interval` | int | `30` | 上传角色卡时的等待时间（秒），超时自动取消 |
-| `kill_Process` | bool | `false` | 是否允许执行 `/酒进程` 管理员指令 |
 
-> ⚠️ **注意**：`thread_safe_mode` 开启后，每次命令执行前后都会重新启动和关闭浏览器，对性能有一定影响，但能避免多用户并发时的浏览器实例冲突。单用户场景建议关闭以提升响应速度。
+> ⚠️ **注意**：`thread_safe_mode` 开启后，每次命令执行前后都会重新启动和关闭浏览器，不常驻内存但响应较慢；关闭后浏览器常驻，响应更快。两种模式均已防止多浏览器进程残留；异常时可用 `/酒进程` 查看进程数量与状态，用 `/酒停止` 一键清理。
 
 ## 📌 注意事项
 
@@ -205,7 +205,7 @@ git clone https://github.com/dragonuniverse8248/astrbot_plugin_bartender
        │ 插件系统
        ▼
 ┌──────────────────────────────────────┐
-│  astrbot_plugin_bartender            │
+│  astrbot_plugin_bartender_extra            │
 │  ┌────────────────────────────┐     │
 │  │  bartender_crawler (Star)   │     │
 │  │  ├─ 浏览器生命周期管理      │     │

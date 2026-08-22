@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import re
 import time, aiohttp, platform
 import subprocess, os, shutil, asyncio
 from pathlib import Path
@@ -8,16 +9,16 @@ from playwright.async_api import async_playwright
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, AstrBotConfig
-from astrbot.api.message_components import Node, Nodes, Plain, Image, File
+from astrbot.api.message_components import Node, Nodes, Plain, Image, File, Reply
 
 # 设置环境变量以启用 Playwright 的调试模式，0为正常模式，1为调试模式
 os.environ["PWDEBUG"] = "0"
 
 # 插件注册，参数分别为：插件名（唯一标识符）、作者、简介、版本号    
-@register("astrbot_plugin_bartender",
+@register("astrbot_plugin_bartender_extra",
            "dragonuniverse8248编写 GML5.2 & deepseek指导",
             "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
-            "1.0.4")
+             "1.0.6")
 
 
 
@@ -29,16 +30,22 @@ class bartender_crawler(Star):
         self.chats_name_id = {} # 初始化角色字典
         self.default_chat = config['now_chats_name'] # 获取配置文件当前角色
         self.browser = None # 初始化浏览器类
+        self._browser_lock = asyncio.Lock() # 浏览器启动/关闭互斥锁，防止并发重复启动出多个浏览器
         self.status_running = False # 消息状态初始化
         self.config = config # 初始化配置文件
-        self.cache_dir = Path("data/temp/astrbot_plugin_bartender") # 初始化本地缓存文件夹路径
+        self.cache_dir = Path("data/temp/astrbot_plugin_bartender_extra") # 初始化本地缓存文件夹路径
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.waiting_sessions = {} # 初始化会话状态字典，用于记录哪些用户正在等待发送图片，格式为: {"群号_用户ID": 过期时间戳}
         self.plugin_dir = Path(__file__).parent # 获取当前目录
         self.browser_dir = self.plugin_dir / "browser"
 
     async def initialize_browser(self):
-        """使用 Playwright 来启动浏览器 手动管理线程"""
+        """使用 Playwright 来启动浏览器（加锁串行化，防止并发重复启动出多个浏览器）"""
+        async with self._browser_lock:
+            return await self._launch_browser()
+
+    async def _launch_browser(self):
+        """启动浏览器与加载页面的实际逻辑（调用方需持有 _browser_lock）"""
         parsed = urlparse(self.ST_URL) # 解析目标地址和端口
         host = parsed.hostname or parsed.path.split(":")[0]
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
@@ -50,8 +57,8 @@ class bartender_crawler(Star):
             await writer.wait_closed()
         except Exception as e:
             logger.error(f"目标地址 {self.ST_URL} 不可达（host={host}, port={port}），请确认酒馆已启动或配置正确。错误：{e}")
-            return  # 不可达直接退出函数，不再启动浏览器
-        await self.close_browser() # 判断并且关闭浏览器
+            return False  # 不可达直接退出函数，不再启动浏览器
+        await self._close_browser() # 先清理可能残留的旧浏览器（含孤儿进程）
         self.p = await async_playwright().start()
         if os.name == 'nt':
             exe_path = self.browser_dir / "chrome.exe"
@@ -76,24 +83,24 @@ class bartender_crawler(Star):
             await self.page.goto(self.ST_URL, wait_until="domcontentloaded")
             await self.page.wait_for_selector(".welcomeHeaderVersionDisplay",state="visible")
             logger.info(f"{self.ST_URL}页面加载成功")
+            return True
         except Exception as e:
             logger.error(f"请检查是否目录下是否有浏览器文件browser文件，或系统安装playwright的运行环境并且下载了浏览器依赖，若无请查看说明进行安装: {e}")
+            return False
 
     async def check_browser(self):
-        """检查浏览器是否开启"""
-        try:
-            if (hasattr(self, 'browser') and self.browser and self.browser.is_connected())\
-                    or (hasattr(self, 'playwright') and self.playwright):
+        """检查浏览器是否可用；不可用时加锁重启，避免并发启动出多个浏览器"""
+        async with self._browser_lock:
+            try: # 连接正常则直接复用
+                if self.browser and self.browser.is_connected():
                     self.page.locator("#rightNavDrawerIcon")
-                    # logger.info("浏览器连接正常")
                     return True
-            else:
-                    await self.initialize_browser() # 重新打开浏览器
-                    logger.info("浏览器重启成功") 
-                    return True
-        except Exception as e:
-            logger.error(f"检测浏览器失败: {e}")
-            return False
+            except Exception as e:
+                logger.warning(f"浏览器探活失败，准备重启: {e}")
+            ok = await self._launch_browser() # 锁内串行重启，旧进程会被 _close_browser 清理
+            if ok:
+                logger.info("浏览器重启成功")
+            return ok
 
     async def open_chats(self):
         """打开角色导航栏并检测"""
@@ -185,8 +192,13 @@ class bartender_crawler(Star):
             if not message_new or not message_new[0].strip():
                 logger.error("get_new_message 消息为空")
                 return None
-            message_list = message_new[0].split("\n")
-            logger.info(f"get_new_message 拆分后 {len(message_list)} 段，首段前50字: {message_list[0][:50]}")
+            message_list = [s.strip() for s in message_new[0].split("\n") if s.strip()]
+            logger.info(f"get_new_message 过滤后 {len(message_list)} 段，首段前50字: {message_list[0][:50]}")
+            max_nodes = 100
+            truncated = False
+            if len(message_list) > max_nodes:
+                message_list = message_list[:max_nodes]
+                truncated = True
             nodes_list = [
                 Node(
                     uin = bot_id,
@@ -194,6 +206,12 @@ class bartender_crawler(Star):
                     content = [Plain(str(item))]
                 )
                 for item in message_list]
+            if truncated:
+                nodes_list.append(Node(
+                    uin = bot_id,
+                    name = self.config['now_chats_name'],
+                    content = [Plain("（内容过长，已截断）")]
+                ))
             forward_message = Nodes(nodes=nodes_list)
             return forward_message
         else:
@@ -337,17 +355,80 @@ class bartender_crawler(Star):
             logger.error(f"获取楼层错误:{e}")
             return 0
 
+    def extract_quoted_text(self, comp):
+        """从 Reply 组件提取被引用消息的纯文本（兼容无 message_str 字段的旧版 AstrBot）"""
+        text = getattr(comp, "message_str", None) or ""
+        if not text.strip(): # 旧版回退：从被引用消息段链中拼接文本
+            parts = []
+            for seg in (getattr(comp, "chain", None) or []):
+                seg_text = getattr(seg, "text", None) or getattr(seg, "message_str", None) or ""
+                if seg_text:
+                    parts.append(str(seg_text))
+            text = "".join(parts)
+        return text.strip()
+
+    async def get_floor_by_quote(self, quoted_text):
+        """根据被引用消息文本定位酒馆楼层，返回匹配到的楼层号列表（1 起，旧→新）"""
+        quoted_text = (quoted_text or "").strip()
+        if not quoted_text:
+            return []
+        # 兼容性候选：原文 / 去掉"当前共N楼层"前缀的 /酒 回复 / 去掉"酒"/"/酒"前缀的用户指令
+        candidates = [quoted_text]
+        head, sep, rest = quoted_text.partition("\n")
+        if sep and re.match(r"^当前共\d+楼层$", head.strip()) and rest.strip():
+            candidates.append(rest.strip())
+        parts = quoted_text.split(None, 1)
+        if len(parts) == 2 and parts[0].lstrip("/") == "酒":
+            candidates.append(parts[1].strip())
+        norm_candidates = [" ".join(c.split()) for c in candidates if c.strip()]
+        floors = await self.page.evaluate(
+            """() => Array.from(document.querySelectorAll('#chat > *')).map(el => {
+                const mt = el.querySelector('.mes_block .mes_text');
+                return mt ? mt.innerText : null;
+            })"""
+        )
+        matches = []
+        for i, floor_text in enumerate(floors or []):
+            if not floor_text:
+                continue
+            norm = " ".join(str(floor_text).split())
+            if any(norm == c for c in norm_candidates):
+                matches.append(i + 1)
+        return matches
+
     async def close_browser_auto(self):
         """线程安全模式判断关闭"""
         if self.config['thread_safe_mode']: # 判断并且关闭浏览器
             await self.close_browser()
 
     async def close_browser(self):
-        """关闭浏览器"""
-        if hasattr(self, 'browser') and self.browser and self.browser.is_connected(): # 检查是否存在浏览器
-            await self.browser.close() # 关闭浏览器
-        if hasattr(self, 'playwright') and self.playwright: # 检测是否存在浏览器
-            await self.playwright.stop() # 关闭浏览器
+        """关闭浏览器（加锁，与启动/检查互斥）"""
+        async with self._browser_lock:
+            await self._close_browser()
+
+    async def _close_browser(self):
+        """关闭浏览器与 playwright 驱动的实际逻辑（调用方需持有 _browser_lock）"""
+        browser = getattr(self, 'browser', None)
+        if browser:
+            try:
+                if browser.is_connected():
+                    await browser.close() # 正常关闭
+                else:
+                    # 连接已断但进程可能残留：直接杀进程，防止孤儿 chrome 占内存
+                    proc = getattr(browser, 'process', None)
+                    if proc:
+                        proc.kill()
+            except Exception as e:
+                logger.warning(f"关闭浏览器进程异常: {e}")
+        p = getattr(self, 'p', None)
+        if p: # 原代码误写 self.playwright（从未赋值），驱动从未真正停止，导致进程残留
+            try:
+                await p.stop()
+            except Exception as e:
+                logger.warning(f"停止 playwright 驱动异常: {e}")
+        self.browser = None
+        self.page = None
+        self.p = None
 
     async def react_message(self, event):
         """给触发指令的聊天消息贴表情回应（仅QQ/aiocqhttp平台，失败静默不影响主流程）"""
@@ -366,6 +447,35 @@ class bartender_crawler(Star):
         except Exception as e:
             logger.warning(f"添加表情回应失败（不影响后续流程）: {e}")
 
+    def find_card_comp(self, event):
+        """从消息链中查找角色卡组件（支持直接附带、引用图片、引用转发卡片内的图片）"""
+        comps = event.get_messages()
+        for comp in comps:
+            if isinstance(comp, (Image, File)):
+                return comp
+        for comp in comps:
+            if isinstance(comp, Reply) and comp.chain:
+                for inner in comp.chain:
+                    found = self._find_media_in_comp(inner)
+                    if found:
+                        return found
+        return None
+
+    def _find_media_in_comp(self, comp):
+        """递归从组件中查找图片或文件（穿透 Nodes/Node 嵌套）"""
+        if isinstance(comp, (Image, File)):
+            return comp
+        if isinstance(comp, Node):
+            for inner in (comp.content or []):
+                found = self._find_media_in_comp(inner)
+                if found:
+                    return found
+        if isinstance(comp, Nodes):
+            for node in (comp.nodes or []):
+                found = self._find_media_in_comp(node)
+                if found:
+                    return found
+        return None
     async def process_image(self, image_comp: Image):
         """统一处理图片落地与后续操作的流程控制"""
         logger.info("已接收到图片，正在落地为本地文件并处理...")
@@ -410,27 +520,24 @@ class bartender_crawler(Star):
         return None
 
     async def up_chat_png(self, local_file_path):
-        """上传角色卡,只支持png图片"""
-        if self.status_running: # 判断运行状态
-            self.status_running = False
-            await self.open_browser_auto(False)
-            try:
-                if await self.check_browser(): # 打开浏览器
-                    await self.open_chats() # 打开角色导航栏
-                    self.page.on("filechooser", lambda file_chooser: file_chooser.set_files(local_file_path))# 1. 监听文件选择器事件
-                    await self.page.click("#character_import_button") # 2. 点击指定的元素
-                    await self.page.wait_for_selector(".toast.toast-success", timeout=5000,state="visible") # 3. 等待页面响应
-                    await self.close_chats() # 关闭角色导航栏
-                    await self.get_all_chats() # 重新获取角色列表
-                    logger.info(f"成功点击按钮并上传文件: {local_file_path}") # 4. 返回操作结果
-            except Exception as e:
-                logger.info(f"添加操作失败: {str(e)}")
-            await self.close_browser_auto() # 关闭浏览器
-            self.status_running = True
+        """上传角色卡,只支持png图片（调用方已持有 status_running 互斥）"""
+        await self.open_browser_auto(False)
+        try:
+            if await self.check_browser(): # 打开浏览器
+                await self.open_chats() # 打开角色导航栏
+                self.page.on("filechooser", lambda file_chooser: file_chooser.set_files(local_file_path))# 1. 监听文件选择器事件
+                await self.page.click("#character_import_button") # 2. 点击指定的元素
+                await self.page.wait_for_selector(".toast.toast-success", timeout=5000,state="visible") # 3. 等待页面响应
+                await self.close_chats() # 关闭角色导航栏
+                await self.get_all_chats() # 重新获取角色列表
+                logger.info(f"成功点击按钮并上传文件: {local_file_path}") # 4. 返回操作结果
+        except Exception as e:
+            logger.info(f"添加操作失败: {str(e)}")
+        await self.close_browser_auto() # 关闭浏览器
 
     async def del_chat_png(self, dal_name):
         """删除角色卡"""
-        if self.check_browser():
+        if await self.check_browser():
             await self.open_chats()
             await self.page.locator(f"#{self.chats_name_id[dal_name]}").click() # 点击角色卡
             await self.check_confirm() # 检查是否有世界书和酒馆脚本确认
@@ -468,7 +575,90 @@ class bartender_crawler(Star):
             print(f"[系统清理] 清理 Chrome 进程时发生错误: {e}")
             return False
 
+    def count_chrome_processes(self):
+        """统计系统 chrome/chromium 进程数量，返回 (总数, 明细列表)"""
+        current_os = platform.system()
+        total = 0
+        detail = []
+        try:
+            if current_os == "Windows":
+                for image in ("chrome.exe", "chromium.exe"):
+                    r = subprocess.run(
+                        ["tasklist", "/FI", f"IMAGENAME eq {image}", "/FO", "CSV", "/NH"],
+                        capture_output=True, text=True, timeout=10
+                    )
+                    # CSV 行以引号开头；无匹配时 tasklist 输出 INFO: 行，不算进程数
+                    n = len([line for line in r.stdout.splitlines() if line.strip().startswith('"')])
+                    if n:
+                        detail.append(f"{image}: {n}")
+                    total += n
+            else:
+                for name in ("chrome", "chromium", "chromium-browser"):
+                    r = subprocess.run(
+                        ["pgrep", "-x", name], capture_output=True, text=True, timeout=10
+                    )
+                    n = len([line for line in r.stdout.splitlines() if line.strip()])
+                    if n:
+                        detail.append(f"{name}: {n}")
+                    total += n
+        except Exception as e:
+            return -1, [f"统计失败: {e}"]
+        return total, detail
 
+    async def start_tavern(self):
+        """启动插件目录中的酒馆（后台拉起 server.js）"""
+        parsed = urlparse(self.ST_URL)
+        host = parsed.hostname or parsed.path.split(":")[0]
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        # 已运行检查
+        try:
+            _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=3)
+            writer.close()
+            await writer.wait_closed()
+            return True, "酒馆已在运行"
+        except Exception:
+            pass
+        # 定位目录
+        st_dir = self.plugin_dir / "SillyTavern"
+        if not (st_dir / "server.js").exists():
+            return False, "未在插件目录找到 SillyTavern，请先运行 download_sillytavern 脚本下载"
+        # Node 检查
+        node_path = shutil.which("node")
+        if not node_path:
+            if os.name == "nt":
+                return False, "未检测到 Node.js，SillyTavern 需要 Node.js 18 或更高版本。请安装: winget install OpenJS.NodeJS.LTS"
+            return False, "未检测到 Node.js，SillyTavern 需要 Node.js 18 或更高版本。请通过 nvm 或官网安装"
+        # 后台启动
+        log_path = self.cache_dir / "sillytavern.log"
+        try:
+            if hasattr(self, "_st_log") and self._st_log:
+                try:
+                    self._st_log.close()
+                except Exception:
+                    pass
+            self._st_log = open(log_path, "w", encoding="utf-8")
+            popen_kwargs = {
+                "cwd": str(st_dir),
+                "stdout": self._st_log,
+                "stderr": subprocess.STDOUT,
+            }
+            if os.name == "nt":
+                popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+            else:
+                popen_kwargs["start_new_session"] = True
+            subprocess.Popen([node_path, "server.js"], **popen_kwargs)
+        except Exception as e:
+            return False, f"启动失败: {e}"
+        # 等待就绪（最长约 60 秒）
+        for _ in range(30):
+            try:
+                _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=2)
+                writer.close()
+                await writer.wait_closed()
+                return True, "酒馆已启动"
+            except Exception:
+                await asyncio.sleep(2)
+        return False, f"酒馆启动超时，请查看日志: {log_path}"
 
 
 
@@ -482,11 +672,13 @@ class bartender_crawler(Star):
     #     await bartender_crawler.close_browser_auto(self)
     #     yield event.plain_result(f"喵~这是测试指令的回复")
 
-    @filter.command("酒关闭")
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("酒停止")
     async def command_close_browser(self, event: AstrMessageEvent):
-        """关闭浏览器"""
-        await bartender_crawler.close_browser(self)
-        yield event.plain_result("浏览器已关闭")
+        """关闭插件浏览器并清理后台所有 chrome/chromium 进程"""
+        await bartender_crawler.close_browser(self) # 先优雅关闭插件自己的浏览器
+        await bartender_crawler.kill_chrome_process(self) # 再兜底清理残留进程
+        yield event.plain_result("已关闭浏览器并清理所有后台 Chrome/Chromium 进程")
 
     @filter.command("酒")
     async def command_send_message(self, event: AstrMessageEvent):
@@ -555,11 +747,28 @@ class bartender_crawler(Star):
 
     @filter.command("酒查看")
     async def command_get_message(self, event: AstrMessageEvent):
-        """获取当前最新楼层"""
+        """获取最新楼层；引用消息时可定位其楼层数"""
         if self.status_running:
             self.status_running = False
             try:
                 await bartender_crawler.open_browser_auto(self, False)
+                quoted_text = ""
+                for comp in event.get_messages(): # 检测消息中是否带引用
+                    if isinstance(comp, Reply):
+                        quoted_text = bartender_crawler.extract_quoted_text(self, comp)
+                        break
+                if quoted_text: # 引用模式：定位被引用消息对应的楼层
+                    if not await bartender_crawler.check_browser(self):
+                        yield event.plain_result("浏览器连接失败")
+                        return
+                    matches = await bartender_crawler.get_floor_by_quote(self, quoted_text)
+                    if not matches:
+                        yield event.plain_result("未在酒馆中找到与引用消息匹配的楼层")
+                    elif len(matches) == 1:
+                        yield event.plain_result(f"引用消息为第 {matches[0]} 层")
+                    else:
+                        yield event.plain_result("引用消息匹配到多层：第 " + "、".join(str(m) for m in matches) + " 层")
+                    return
                 bot_id =event.message_obj.self_id # 获取bot_id
                 forward_message = await bartender_crawler.get_new_message(self, bot_id) # 获取信息
                 remaining = await bartender_crawler.get_now_floor(self,0) # 获取当前楼层数
@@ -674,12 +883,8 @@ class bartender_crawler(Star):
         if self.status_running: # 判断运行状态
             self.status_running = False
             try:
-                image_comp = None
-                for comp in event.get_messages(): # 1. 遍历当前指令的消息链，寻找是否在同一条消息里就带了图片
-                    if isinstance(comp, Image):
-                        image_comp = comp
-                        break
-                if image_comp: # 情况 A：指令和图片在同一条消息，直接进入处理流程
+                image_comp = bartender_crawler.find_card_comp(self, event)
+                if image_comp: # 同条消息附带图片或引用了含图消息，直接进入处理流程
                     await bartender_crawler.process_image(self, image_comp) # process_image无返回值，无需yield
                     chats = '\n'.join(self.chats_name_id.keys())
                     yield event.plain_result(f"角色列表：\n{chats}")
@@ -726,14 +931,55 @@ class bartender_crawler(Star):
             yield event.plain_result("等待其他操作完成")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
-    @filter.command("酒进程")
-    async def del_chrome_command(self, event: AstrMessageEvent):
-        """删除后台所有chrome进程"""
-        if self.config['kill_Process']:
-            await bartender_crawler.kill_chrome_process(self)
-            yield event.plain_result("已尝试清理所有后台 Chrome/Chromium 进程")
+    @filter.command("酒启动")
+    async def command_start_tavern(self, event: AstrMessageEvent):
+        """启动目录中的酒馆"""
+        if self.status_running:
+            self.status_running = False
+            try:
+                await bartender_crawler.react_message(self, event)
+                should_connect, result = await bartender_crawler.start_tavern(self)
+                if not should_connect:
+                    yield event.plain_result(result)
+                    return
+                if self.config['thread_safe_mode']:
+                    await bartender_crawler.open_browser_auto(self, False)
+                    await bartender_crawler.check_1000page(self)
+                    await bartender_crawler.get_all_chats(self)
+                    await bartender_crawler.close_browser_auto(self)
+                else:
+                    await bartender_crawler.initialize_browser(self)
+                    await bartender_crawler.check_1000page(self)
+                    await bartender_crawler.get_all_chats(self)
+                    await bartender_crawler.switch_chats(self, self.config['now_chats_name'])
+                yield event.plain_result(f"{result}，已自动连接")
+            except Exception as e:
+                logger.error(f"酒启动指令异常: {e}")
+                yield event.plain_result("指令执行异常，请稍后重试")
+            finally:
+                await bartender_crawler.close_browser_auto(self)
+                self.status_running = True
         else:
-            yield event.plain_result("请在配置文件中开启指令")
+            yield event.plain_result("正在Shake~，请稍作等待")
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("酒进程")
+    async def chrome_status_command(self, event: AstrMessageEvent):
+        """查看后台 chrome/chromium 进程数量与插件浏览器状态"""
+        total, detail = bartender_crawler.count_chrome_processes(self)
+        if self.browser and self.browser.is_connected():
+            browser_state = "已连接"
+        elif self.browser:
+            browser_state = "连接已断开"
+        else:
+            browser_state = "未启动"
+        driver_state = "运行中" if getattr(self, 'p', None) else "未启动"
+        lines = [f"系统 chrome/chromium 进程总数：{total}"]
+        if detail:
+            lines.append("明细：" + "，".join(detail))
+        lines.append(f"插件浏览器：{browser_state}")
+        lines.append(f"playwright 驱动：{driver_state}")
+        yield event.plain_result("\n".join(lines))
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("酒重置")
@@ -742,7 +988,7 @@ class bartender_crawler(Star):
         await bartender_crawler.open_browser_auto(self, False)
         self.chats_name_id = {} # 初始化角色字典
         self.status_running = False # 消息状态初始化
-        self.cache_dir = Path("data/temp/astrbot_plugin_bartender") # 初始化本地缓存文件夹路径
+        self.cache_dir = Path("data/temp/astrbot_plugin_bartender_extra") # 初始化本地缓存文件夹路径
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.waiting_sessions = {} # 初始化会话状态字典，用于记录哪些用户正在等待发送图片，格式为: {"群号_用户ID": 过期时间戳}
         self.config['now_chats_name'] = "Seraphina" # 当前角色切换至默认
@@ -759,15 +1005,16 @@ class bartender_crawler(Star):
             +"/酒 [文字内容]\n"+"用于将用户输入转义给酒馆并且返回结果，不支持图片输入，禁止输入为空\n"
             +"/酒切换 [名字]\n"+"切换角色卡，若角色列表中无则不进行操作，禁止输入数字\n"
             +"/酒删除 [楼层数]\n"+"删除楼层，当不输入任何楼层数时默认删除一层，建议两层进行删除包括用户输入\n"
-            +"/酒加卡 [图片] or /酒加卡\n"+"添加角色卡到酒馆，由于某些渠道无法图片和指令一起发送，在直接发送后，将计时等待图片，计时内单发图片即可添加，计时长短在配置文件调整\n"
+            +"/酒加卡 [图片] or /酒加卡\n"+"添加角色卡到酒馆，支持直接附带图片、引用(回复)含图消息、或指令后计时内单发图片三种方式\n"
             +"/酒删卡 [名字]\n"+"删除指定角色卡，若删除角色卡为当前角色卡则自动切换至默认，禁止删除默认卡\n"
             +"/酒重新\n"+"将最新楼层的输入重新生成并且返回，不输入任何参数\n"
-            +"/酒查看\n"+"查看最新楼层的消息，当最新为用户输入时也会返回\n"
+            +"/酒查看\n"+"查看最新楼层的消息，当最新为用户输入时也会返回；引用一条消息后发送本指令，可定位其对应的楼层数\n"
             +"/酒状态\n"+"查看当前角色卡和角色卡列表以及浏览器的状态\n"
-            +"/酒关闭\n"+"调试指令用于手动关闭还处于线程中的浏览器\n"
             +"/酒帮助\n"+"你现在不就在看我，你问我？\n"
+            +"/酒启动[管理员指令]\n"+"用于启动插件目录中的酒馆，启动后自动连接\n"
             +"/酒重置[管理员指令]\n"+"用于重置所有全局变量，当变量混乱无法使用时，可进行尝试\n"
-            +"/酒进程[管理员指令]\n"+"在配置文件开启后可用，将杀死后台所有的chrome进程，用于解决无头浏览器溢出"
+            +"/酒停止[管理员指令]\n"+"关闭插件浏览器并清理后台所有 chrome/chromium 进程\n"
+            +"/酒进程[管理员指令]\n"+"查看当前 chrome/chromium 进程数量与浏览器状态"
             )
 
     @filter.event_message_type(filter.EventMessageType.ALL)
@@ -791,10 +1038,17 @@ class bartender_crawler(Star):
         if image_comp:
             del self.waiting_sessions[session_key] # 找到了组件，清除等待状态
             event.stop_event() # 阻止该消息被其他插件重复处理
-            yield event.plain_result("已接收角色卡,添加中~")
-            await bartender_crawler.process_image(self, image_comp) # 进入统一处理流程
-            chats = '\n'.join(self.chats_name_id.keys())
-            yield event.plain_result(f"当前角色列表：\n{chats}")
+            if self.status_running: # 与其它指令互斥，避免并发操作同一个浏览器
+                self.status_running = False
+                try:
+                    yield event.plain_result("已接收角色卡,添加中~")
+                    await bartender_crawler.process_image(self, image_comp) # 进入统一处理流程
+                    chats = '\n'.join(self.chats_name_id.keys())
+                    yield event.plain_result(f"当前角色列表：\n{chats}")
+                finally:
+                    self.status_running = True
+            else:
+                yield event.plain_result("有其他操作进行中，请稍后重试")
         else: # 发的是纯文字，静默忽略
             return 
 

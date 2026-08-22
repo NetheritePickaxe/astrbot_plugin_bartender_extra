@@ -45,19 +45,13 @@
     "thread_safe_mode":{
         "description":"线程安全模式",
         "type": "bool",
-        "hint": "开启后指令响应速度慢，弱加载浏览器不占内存，关闭后指令响应速度快，常加载浏览器避免反复加载浪费时间，有小概率出现多浏览器卡后台占内存，不懂如何看进程溢出的不要修改",
+        "hint": "开启后指令响应速度慢，执行指令时临时打开浏览器、结束后关闭，不常驻内存；关闭后指令响应速度快，浏览器常驻避免反复加载。两种模式均已防止多浏览器进程残留，若仍异常可用【酒进程】指令清理",
         "default": false
     },
     "browser_Visible":{
         "description":"浏览器无头模式",
         "type": "bool",
         "hint": "关闭后浏览器可视化，用于调试和查看加载状态",
-        "default": false
-    },
-    "kill_Process":{
-        "description":"杀进程指令开关",
-        "type": "bool",
-        "hint": "开启后允许使用杀进程指令，无差别清理所有chrome浏览器进程",
         "default": false
     }
 }
