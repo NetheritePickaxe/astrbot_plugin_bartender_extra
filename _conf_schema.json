@@ -42,6 +42,12 @@
         "hint": "开启后 /酒 的回复会在正文前附带“当前共X楼层”；默认关闭只发正文。不影响 /酒查看",
         "default": false
     },
+    "global_persona_binding":{
+        "description":"全局人设绑定",
+        "type": "bool",
+        "hint": "开启后用户人设绑定按QQ号全局生效，同一用户在所有群共用一个人设；关闭时按群隔离，同一用户可在不同群绑定不同人设。默认关闭",
+        "default": false
+    },
     "thread_safe_mode":{
         "description":"线程安全模式",
         "type": "bool",

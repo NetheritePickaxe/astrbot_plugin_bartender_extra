@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import re
+import re, json
 import time, aiohttp, platform
 import subprocess, os, shutil, asyncio
 from pathlib import Path
@@ -11,14 +11,22 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, AstrBotConfig
 from astrbot.api.message_components import Node, Nodes, Plain, Image, File, Reply
 
+try:  # 插件 Pages 后端 API（AstrBot >= v4.24.2），旧版降级跳过
+    from astrbot.api.web import json_response
+    _WEB_API_AVAILABLE = True
+except ImportError:
+    _WEB_API_AVAILABLE = False
+
+PLUGIN_NAME = "astrbot_plugin_bartender_extra"
+
 # 设置环境变量以启用 Playwright 的调试模式，0为正常模式，1为调试模式
 os.environ["PWDEBUG"] = "0"
 
 # 插件注册，参数分别为：插件名（唯一标识符）、作者、简介、版本号    
-@register("astrbot_plugin_bartender_extra",
+@register(PLUGIN_NAME,
            "dragonuniverse8248编写 GML5.2 & deepseek指导",
             "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
-             "1.0.6")
+             "1.3.0")
 
 
 
@@ -38,6 +46,86 @@ class bartender_crawler(Star):
         self.waiting_sessions = {} # 初始化会话状态字典，用于记录哪些用户正在等待发送图片，格式为: {"群号_用户ID": 过期时间戳}
         self.plugin_dir = Path(__file__).parent # 获取当前目录
         self.browser_dir = self.plugin_dir / "browser"
+        self.persona_bindings = self._load_persona_bindings() # 用户人设绑定字典，格式为: {"群号_用户ID": {"name": 人设名, "avatar_id": 人设头像ID}}
+        self._register_web_apis(context)
+
+    def _register_web_apis(self, context):
+        """注册插件 Pages 后端 API（旧版 AstrBot 无此能力时降级跳过）"""
+        if not (_WEB_API_AVAILABLE and hasattr(context, "register_web_api")):
+            logger.warning("当前 AstrBot 版本不支持插件 Pages（需 v4.24.2+），WebUI 页面不可用，聊天指令不受影响。")
+            return
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/info",
+            self.page_info,
+            ["GET"],
+            "获取酒馆地址与连通状态",
+        )
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/tavern/start",
+            self.page_start_tavern,
+            ["POST"],
+            "启动插件目录中的酒馆",
+        )
+
+    async def page_info(self):
+        """返回酒馆地址、连通性、是否携带捆绑酒馆"""
+        st_url = f"{self.config['browser_ip']}:{self.config['browser_port']}"
+        parsed = urlparse(st_url)
+        host = parsed.hostname or parsed.path.split(":")[0]
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        reachable = False
+        try:
+            _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=3)
+            writer.close()
+            await writer.wait_closed()
+            reachable = True
+        except Exception:
+            reachable = False
+        has_bundled = (self.plugin_dir / "SillyTavern" / "server.js").exists()
+        return json_response({
+            "st_url": st_url,
+            "ip": self.config['browser_ip'],
+            "port": self.config['browser_port'],
+            "reachable": reachable,
+            "has_bundled_st": has_bundled,
+        })
+
+    async def page_start_tavern(self):
+        """启动插件目录中的酒馆（供 WebUI 一键启动按钮调用）"""
+        ok, msg = await self.start_tavern()
+        return json_response({"ok": ok, "message": msg})
+
+    def _persona_bindings_path(self) -> Path:
+        """人设绑定数据的持久化文件路径"""
+        return self.cache_dir / "persona_bindings.json"
+
+    def _load_persona_bindings(self) -> dict:
+        """从本地文件加载用户人设绑定数据"""
+        try:
+            path = self._persona_bindings_path()
+            if path.exists():
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except Exception as e:
+            logger.error(f"加载人设绑定数据失败: {e}")
+        return {}
+
+    def _save_persona_bindings(self):
+        """保存用户人设绑定数据至本地文件"""
+        try:
+            path = self._persona_bindings_path()
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self.persona_bindings, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"保存人设绑定数据失败: {e}")
+
+    def get_persona_session_key(self, event) -> str:
+        """计算用户人设绑定键：开启全局绑定仅用用户ID，否则用 群号_用户ID（按群隔离）"""
+        if self.config.get('global_persona_binding'):
+            return str(event.get_sender_id())
+        return f"{event.get_group_id()}_{event.get_sender_id()}"
 
     async def initialize_browser(self):
         """使用 Playwright 来启动浏览器（加锁串行化，防止并发重复启动出多个浏览器）"""
@@ -183,6 +271,188 @@ class bartender_crawler(Star):
                 logger.info("未找到存在角色")
                 return None
 
+    async def is_persona_panel_open(self):
+        """检测人设管理面板是否已打开"""
+        try:
+            return bool(await self.page.evaluate(
+                "() => document.querySelector('#PersonaManagement')?.classList.contains('openDrawer') ?? false"))
+        except Exception:
+            return False
+
+    async def open_persona_panel(self):
+        """打开人设管理面板"""
+        if await self.check_browser():
+            try:
+                if not await self.is_persona_panel_open():
+                    await self.page.locator("#persona-management-button .drawer-toggle").click()
+                    await self.page.wait_for_selector("#PersonaManagement.openDrawer", state="visible", timeout=5000)
+                return True
+            except Exception as e:
+                logger.error(f"打开人设面板失败: {e}")
+                return False
+        return False
+
+    async def close_persona_panel(self):
+        """关闭人设管理面板（若已打开）"""
+        try:
+            if await self.is_persona_panel_open():
+                await self.page.locator("#persona-management-button .drawer-toggle").click()
+                await self.page.wait_for_selector("#PersonaManagement.openDrawer", state="hidden", timeout=5000)
+        except Exception as e:
+            logger.warning(f"关闭人设面板异常: {e}")
+        return True
+
+    async def _ensure_persona_list_full(self):
+        """将人设列表分页调整为1000，保证一次渲染全部人设（与角色列表 check_1000page 同理）"""
+        try:
+            size_select = self.page.locator("#persona_pagination_container .J-paginationjs-size-select")
+            await size_select.select_option(value="1000", timeout=5000)
+            await self.page.wait_for_timeout(500) # 等待分页重渲染
+        except Exception as e:
+            logger.warning(f"人设分页调整失败（可能无需调整）: {e}")
+
+    async def get_personas(self):
+        """获取所有人设：返回 (人设字典{名称: 头像ID}, 当前人设名/None)；浏览器失败返回 (None, None)"""
+        if not await self.open_persona_panel():
+            return None, None
+        try:
+            await self._ensure_persona_list_full()
+            blocks = self.page.locator("#user_avatar_block .avatar-container")
+            personas = {}
+            current = None
+            for i in range(await blocks.count()):
+                block = blocks.nth(i)
+                name = (await block.locator(".ch_name").inner_text()).strip()
+                avatar_id = await block.get_attribute("data-avatar-id")
+                if not name or not avatar_id:
+                    continue
+                personas[name] = avatar_id
+                if await block.evaluate("el => el.classList.contains('selected')"):
+                    current = name
+            return personas, current
+        except Exception as e:
+            logger.error(f"获取人设列表失败: {e}")
+            return None, None
+        finally:
+            await self.close_persona_panel()
+
+    async def switch_persona(self, name):
+        """切换到指定人设（支持人设名或头像ID）；返回 (是否成功, 头像ID/None)"""
+        if not await self.open_persona_panel():
+            return False, None
+        try:
+            await self._ensure_persona_list_full()
+            blocks = self.page.locator("#user_avatar_block .avatar-container")
+            for i in range(await blocks.count()):
+                block = blocks.nth(i)
+                block_name = (await block.locator(".ch_name").inner_text()).strip()
+                avatar_id = await block.get_attribute("data-avatar-id")
+                if name in (block_name, avatar_id):
+                    await block.click()
+                    await self.page.wait_for_function(
+                        """(id) => Array.from(document.querySelectorAll('#user_avatar_block .avatar-container'))
+                                          .some(el => el.getAttribute('data-avatar-id') === id && el.classList.contains('selected'))""",
+                        arg=avatar_id, timeout=5000)
+                    logger.info(f"切换人设为：{name}（{avatar_id}）")
+                    return True, avatar_id
+            logger.warning(f"未找到人设：{name}")
+            return False, None
+        except Exception as e:
+            logger.error(f"切换人设失败: {e}")
+            return False, None
+        finally:
+            await self.close_persona_panel()
+
+    async def _select_persona_block(self, name):
+        """在人设面板中按名称选中人设（不关闭面板）；返回是否成功"""
+        await self._ensure_persona_list_full()
+        blocks = self.page.locator("#user_avatar_block .avatar-container")
+        for i in range(await blocks.count()):
+            block = blocks.nth(i)
+            block_name = (await block.locator(".ch_name").inner_text()).strip()
+            if block_name == name:
+                if not await block.evaluate("el => el.classList.contains('selected')"):
+                    await block.click()
+                    await self.page.wait_for_timeout(300)
+                return True
+        return False
+
+    async def create_persona(self, name, description):
+        """新建人设（名+可选描述）；返回 (是否成功, 提示)"""
+        if not await self.open_persona_panel():
+            return False, "打开人设面板失败"
+        try:
+            await self.page.locator("#create_dummy_persona").click(timeout=5000) # 点击新建按钮
+            name_input = self.page.locator(".popup-input").first # 等待名称输入弹窗
+            await name_input.wait_for(state="visible", timeout=5000)
+            await name_input.fill(name, timeout=5000)
+            await self.page.locator(".popup-button-ok[data-result='1']").click(timeout=5000) # 确认
+            await self.page.locator(".popup-input").first.wait_for(state="hidden", timeout=5000) # 等待弹窗关闭
+            await self.page.wait_for_timeout(500) # 等待新人设渲染选中
+            if description: # 描述非空才填写（默认即为空描述）
+                desc = self.page.locator("#persona_description")
+                await desc.fill(description, timeout=5000)
+                await self.page.wait_for_timeout(500) # 等待自动保存
+            logger.info(f"已创建人设：{name}")
+            return True, "正常"
+        except Exception as e:
+            logger.error(f"创建人设失败：{e}")
+            return False, "错误"
+        finally:
+            await self.close_persona_panel()
+
+    async def set_persona_description(self, name, description):
+        """更新已存在人设的描述；返回 (是否成功, 提示)"""
+        if not await self.open_persona_panel():
+            return False, "打开人设面板失败"
+        try:
+            if not await self._select_persona_block(name):
+                return False, "未找到人设"
+            desc = self.page.locator("#persona_description")
+            await desc.fill(description, timeout=5000)
+            await self.page.wait_for_timeout(500) # 等待自动保存
+            logger.info(f"已更新人设描述：{name}")
+            return True, "正常"
+        except Exception as e:
+            logger.error(f"更新人设描述失败：{e}")
+            return False, "错误"
+        finally:
+            await self.close_persona_panel()
+
+    async def delete_persona(self, name):
+        """删除人设；返回 (是否成功, 提示)"""
+        if not await self.open_persona_panel():
+            return False, "打开人设面板失败"
+        try:
+            if not await self._select_persona_block(name):
+                return False, "未找到人设"
+            await self.page.locator("#persona_delete_button").click(timeout=5000) # 点击删除
+            ok = self.page.locator(".popup-button-ok[data-result='1']") # 等待确认弹窗
+            await ok.wait_for(state="visible", timeout=5000)
+            await ok.click(timeout=5000)
+            await self.page.wait_for_timeout(500) # 等待删除完成
+            logger.info(f"已删除人设：{name}")
+            return True, "正常"
+        except Exception as e:
+            logger.error(f"删除人设失败：{e}")
+            return False, "错误"
+        finally:
+            await self.close_persona_panel()
+
+    async def apply_user_persona(self, event):
+        """发送前应用当前用户绑定的人设；返回 (是否成功, 失败提示/空串)"""
+        session_key = self.get_persona_session_key(event)
+        bound = self.persona_bindings.get(session_key)
+        if not bound:
+            return True, ""
+        target = bound.get("avatar_id") or bound.get("name")
+        ok, _ = await self.switch_persona(target)
+        if not ok and bound.get("name") and target != bound.get("name"):
+            ok, _ = await self.switch_persona(bound.get("name")) # 头像ID失效则退回按名称匹配
+        if not ok:
+            return False, f"人设切换失败：{bound.get('name')}，请发送 /酒人设解绑 解除后重新绑定"
+        return True, ""
+
     async def get_new_message(self, bot_id):
         """获取最新消息（返回Nodes转发消息）"""
         if await self.check_browser() and await bartender_crawler.get_chat_Status(self): # 判断聊天栏状态
@@ -316,6 +586,164 @@ class bartender_crawler(Star):
         except Exception as e:
             logger.error(f"删除楼层错误:{e}")
             return False
+
+    async def start_new_chat(self):
+        """与当前角色开始新对话（清空楼层）"""
+        try:
+            if await self.check_browser() and await self.get_chat_Status():
+                await self.page.locator("#options_button").click(timeout=5000) # 打开菜单
+                await self.page.locator("#option_start_new_chat").click(timeout=5000) # 点击新对话
+                await self.check_confirm() # 检查确认框
+                logger.info("已开始新对话")
+                return "正常"
+            else:
+                return "无角色卡"
+        except Exception as e:
+            logger.error(f"开始新对话失败：{e}")
+            return "错误"
+
+    async def continue_message(self):
+        """续写最新楼层"""
+        try:
+            if await self.check_browser() and await self.get_chat_Status():
+                await self.page.locator("#options_button").click(timeout=5000) # 打开菜单
+                await self.page.locator("#option_continue").click(timeout=5000) # 点击续写
+                await self.page.wait_for_selector(".fa-solid.fa-circle-stop",state="visible",timeout=15000) # 检测AI生成中
+                await self.page.wait_for_selector(".fa-solid.fa-circle-stop",state="hidden",timeout=120000) # 检测生成完成
+                await self.page.wait_for_selector("#send_but",state="visible",timeout=10000) # 发送按钮复位
+                logger.info("续写完成")
+                return "正常"
+            else:
+                return "无角色卡"
+        except Exception as e:
+            logger.error(f"续写失败：{e}")
+            return "错误"
+
+    async def stop_generation(self):
+        """中断当前生成"""
+        try:
+            if not await self.check_browser():
+                return "浏览器未连接"
+            generating = False
+            try:
+                await self.page.wait_for_selector(".fa-solid.fa-circle-stop",state="visible",timeout=2000) # 检测是否生成中
+                generating = True
+            except Exception:
+                generating = False
+            if not generating:
+                return "无生成中"
+            await self.page.locator(".fa-solid.fa-circle-stop").click(timeout=5000) # 点击停止
+            await self.page.wait_for_selector("#send_but",state="visible",timeout=10000) # 等待复位
+            logger.info("已中断生成")
+            return "已停止"
+        except Exception as e:
+            logger.error(f"中断生成失败：{e}")
+            return "错误"
+
+    async def swipe_message(self, direction):
+        """切换上一条/下一条备选回复，direction: next/prev"""
+        try:
+            if await self.check_browser() and await self.get_chat_Status():
+                message_box = self.page.locator("#chat > *") # 获取最新楼层
+                last = message_box.nth(-1)
+                arrow = last.locator(".swipe_right" if direction == "next" else ".swipe_left")
+                try:
+                    await arrow.click(timeout=5000) # 点击左右箭头
+                except Exception:
+                    return "无更多回复"
+                generating = False # next 会触发生成，prev 仅切换
+                try:
+                    await self.page.wait_for_selector(".fa-solid.fa-circle-stop",state="visible",timeout=3000)
+                    generating = True
+                except Exception:
+                    generating = False
+                if generating:
+                    await self.page.wait_for_selector(".fa-solid.fa-circle-stop",state="hidden",timeout=120000) # 等待生成完成
+                    await self.page.wait_for_selector("#send_but",state="visible",timeout=10000) # 发送按钮复位
+                logger.info(f"swipe {direction} 完成")
+                return "正常"
+            else:
+                return "无角色卡"
+        except Exception as e:
+            logger.error(f"swipe 失败：{e}")
+            return "错误"
+
+    async def get_current_stats(self):
+        """通过页面上下文调用酒馆 REST 获取当前角色统计，返回 {name, stats} 或 None"""
+        try:
+            if not await self.check_browser():
+                return None
+            data = await self.page.evaluate(
+                """async () => {
+                    const nameEl = document.querySelector('#rm_button_selected_ch .interactable');
+                    const name = nameEl ? nameEl.innerText.trim() : null;
+                    if (!name) return null;
+                    const list = await fetch('/api/characters/all', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}).then(r => r.ok ? r.json() : []);
+                    const item = (Array.isArray(list) ? list : []).find(c => c.name === name);
+                    if (!item) return {name: name, stats: null};
+                    const stats = await fetch('/api/stats/get', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}).then(r => r.ok ? r.json() : {});
+                    return {name: name, stats: stats[item.avatar] || null};
+                }"""
+            )
+            return data
+        except Exception as e:
+            logger.error(f"获取统计失败：{e}")
+            return None
+
+    async def export_current_chat(self):
+        """通过页面上下文调用酒馆 REST 导出当前聊天记录，返回本地文件路径或 None"""
+        save_path = self.cache_dir / f"export_{int(time.time() * 1000)}.jsonl"
+        try:
+            if not await self.check_browser():
+                return None
+            text = await self.page.evaluate(
+                """async () => {
+                    const recent = await fetch('/api/chats/recent', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({max: 1})}).then(r => r.ok ? r.json() : []);
+                    const cur = Array.isArray(recent) && recent.length ? recent[0] : null;
+                    if (!cur || !cur.file_name || !cur.avatar) return null;
+                    const r = await fetch('/api/chats/export', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({file: cur.file_name, avatar_url: cur.avatar, is_group: false, format: 'jsonl'})});
+                    if (!r.ok) return null;
+                    const data = await r.json();
+                    return data.result || null;
+                }"""
+            )
+            if not text:
+                return None
+            save_path.write_text(text, encoding="utf-8") # 落地为本地文件
+            return save_path
+        except Exception as e:
+            logger.error(f"导出聊天记录失败：{e}")
+            return None
+
+    async def rename_character(self, old_name, new_name):
+        """通过页面上下文调用酒馆 REST 重命名角色卡，返回 (是否成功, 提示)"""
+        try:
+            if not await self.check_browser():
+                return False, "浏览器未连接"
+            result = await self.page.evaluate(
+                """async (args) => {
+                    const list = await fetch('/api/characters/all', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}).then(r => r.ok ? r.json() : []);
+                    const item = (Array.isArray(list) ? list : []).find(c => c.name === args.old);
+                    if (!item) return {ok: false, msg: '未找到角色卡'};
+                    const r = await fetch('/api/characters/rename', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({avatar_url: item.avatar, new_name: args.new})});
+                    if (!r.ok) return {ok: false, msg: '重命名请求失败'};
+                    return {ok: true};
+                }""",
+                {"old": old_name, "new": new_name},
+            )
+            if not result or not result.get("ok"):
+                return False, (result or {}).get("msg", "错误")
+            # REST 改名后前端 DOM 角色列表已过期，重载页面以同步
+            try:
+                await self.page.reload(wait_until="domcontentloaded")
+                await self.page.wait_for_selector(".welcomeHeaderVersionDisplay", state="visible", timeout=10000)
+            except Exception as e:
+                logger.warning(f"改名后重载页面失败：{e}")
+            await self.get_all_chats() # 重新获取角色列表
+            return True, "正常"
+        except Exception as e:
+            logger.error(f"重命名角色卡失败：{e}")
+            return False, "错误"
 
     async def open_browser_auto(self, first : bool):
         """线程安全模式判断开启"""
@@ -689,6 +1117,10 @@ class bartender_crawler(Star):
                 await bartender_crawler.open_browser_auto(self, False)
                 user_message = event.message_str.strip()
                 if user_message and len(user_message.split()) > 1:
+                    ok_persona, err_persona = await bartender_crawler.apply_user_persona(self, event) # 应用该用户绑定的人设
+                    if not ok_persona:
+                        yield event.plain_result(err_persona)
+                        return
                     await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息（QQ不支持流式输出）
                     user_message = ' '.join(user_message.split()[1:])
                     send_result = await bartender_crawler.send_message(self, user_message) # 发送消息至酒馆
@@ -715,6 +1147,78 @@ class bartender_crawler(Star):
         else:
             yield event.plain_result("正在Shake~，请稍作等待")
 
+    @filter.command("酒人设")
+    async def command_persona_bind(self, event: AstrMessageEvent):
+        """绑定当前用户的人设；无参数时查看绑定状态与人设列表"""
+        if self.status_running:
+            self.status_running = False
+            try:
+                await bartender_crawler.open_browser_auto(self, False)
+                session_key = self.get_persona_session_key(event)
+                user_message = event.message_str.strip()
+                tokens = user_message.split()
+                if len(tokens) > 1: # 绑定模式：/酒人设 [人设名或头像ID]
+                    persona_name = " ".join(tokens[1:])
+                    if persona_name == "解绑": # 兼容 /酒人设 解绑 写法
+                        if session_key in self.persona_bindings:
+                            del self.persona_bindings[session_key]
+                            self._save_persona_bindings()
+                            yield event.plain_result("已解除绑定人设")
+                        else:
+                            yield event.plain_result("当前未绑定人设")
+                        return
+                    ok, avatar_id = await bartender_crawler.switch_persona(self, persona_name)
+                    if ok:
+                        self.persona_bindings[session_key] = {"name": persona_name, "avatar_id": avatar_id}
+                        self._save_persona_bindings()
+                        yield event.plain_result(f"已绑定人设：{persona_name}")
+                    else:
+                        yield event.plain_result(f"未找到人设：{persona_name}，发送 /酒人设 查看全部人设")
+                    return
+                # 查看模式：/酒人设
+                bound = self.persona_bindings.get(session_key)
+                bound_text = f"{bound['name']}" if bound else "无"
+                personas, current = await bartender_crawler.get_personas(self)
+                if personas is None:
+                    yield event.plain_result("浏览器连接失败，无法获取人设列表")
+                    return
+                lines = [f"当前绑定人设：{bound_text}", f"酒馆当前人设：{current or '无'}"]
+                if personas:
+                    lines.append("人设列表：")
+                    lines.extend(f"- {name}（{avatar_id}）" for name, avatar_id in personas.items())
+                else:
+                    lines.append("酒馆中暂无任何人设，可先在酒馆页面创建")
+                yield event.plain_result("\n".join(lines))
+            except Exception as e:
+                logger.error(f"酒人设指令异常: {e}")
+                yield event.plain_result("指令执行异常，请稍后重试")
+            finally:
+                await bartender_crawler.close_browser_auto(self)
+                self.status_running = True
+        else:
+            yield event.plain_result("等待其他操作完成")
+
+    @filter.command("酒人设解绑")
+    async def command_persona_unbind(self, event: AstrMessageEvent):
+        """解除当前用户绑定的人设"""
+        if self.status_running:
+            self.status_running = False
+            try:
+                session_key = self.get_persona_session_key(event)
+                if session_key in self.persona_bindings:
+                    del self.persona_bindings[session_key]
+                    self._save_persona_bindings()
+                    yield event.plain_result("已解除绑定人设")
+                else:
+                    yield event.plain_result("当前未绑定人设")
+            except Exception as e:
+                logger.error(f"酒人设解绑指令异常: {e}")
+                yield event.plain_result("指令执行异常，请稍后重试")
+            finally:
+                self.status_running = True
+        else:
+            yield event.plain_result("等待其他操作完成")
+
     @filter.command("酒重新")
     async def command_rest_message(self, event: AstrMessageEvent):
         """重新生成当前楼层"""
@@ -724,6 +1228,10 @@ class bartender_crawler(Star):
                 await bartender_crawler.open_browser_auto(self, False)
                 user_message = self.config['now_chats_name']
                 if user_message != "" and user_message != None:
+                    ok_persona, err_persona = await bartender_crawler.apply_user_persona(self, event) # 应用该用户绑定的人设
+                    if not ok_persona:
+                        yield event.plain_result(err_persona)
+                        return
                     await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息（QQ不支持流式输出）
                     rest_result = await bartender_crawler.rest_message(self)
                     if rest_result != "正常":
@@ -804,7 +1312,10 @@ class bartender_crawler(Star):
                 else:
                     connect_status = "失败"
                 chats = '\n'.join(self.chats_name_id.keys())
-                yield event.plain_result(f"当前角色卡为：{chat}\n"+f"链接状态：{connect_status}\n"+f"角色列表：\n{chats}")
+                session_key = self.get_persona_session_key(event)
+                bound = self.persona_bindings.get(session_key)
+                bound_text = f"{bound['name']}" if bound else "无"
+                yield event.plain_result(f"当前角色卡为：{chat}\n"+f"链接状态：{connect_status}\n"+f"你的绑定人设：{bound_text}\n"+f"角色列表：\n{chats}")
             except Exception as e:
                 logger.error(f"酒状态指令异常: {e}")
                 yield event.plain_result("指令执行异常，请稍后重试")
@@ -997,6 +1508,266 @@ class bartender_crawler(Star):
         await bartender_crawler.close_browser_auto(self)
         yield event.plain_result("已重置获取所有变量")
 
+    @filter.command("酒新聊")
+    async def command_new_chat(self, event: AstrMessageEvent):
+        """与当前角色开始新对话"""
+        if self.status_running:
+            self.status_running = False
+            try:
+                await bartender_crawler.open_browser_auto(self, False)
+                await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息
+                result = await bartender_crawler.start_new_chat(self)
+                if result != "正常":
+                    yield event.plain_result(f"新对话失败: {result}")
+                else:
+                    remaining = await bartender_crawler.get_now_floor(self, 0) # 获取当前楼层数
+                    yield event.plain_result(f"已开始新对话，当前共{remaining}楼层")
+            except Exception as e:
+                logger.error(f"酒新聊指令异常: {e}")
+                yield event.plain_result("指令执行异常，请稍后重试")
+            finally:
+                await bartender_crawler.close_browser_auto(self)
+                self.status_running = True
+        else:
+            yield event.plain_result("正在Shake~，请稍作等待")
+
+    @filter.command("酒继续")
+    async def command_continue_message(self, event: AstrMessageEvent):
+        """续写最新楼层"""
+        if self.status_running:
+            self.status_running = False
+            try:
+                await bartender_crawler.open_browser_auto(self, False)
+                user_message = self.config['now_chats_name']
+                if user_message != "" and user_message != None:
+                    ok_persona, err_persona = await bartender_crawler.apply_user_persona(self, event) # 应用该用户绑定的人设
+                    if not ok_persona:
+                        yield event.plain_result(err_persona)
+                        return
+                    await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息
+                    cont_result = await bartender_crawler.continue_message(self)
+                    if cont_result != "正常":
+                        yield event.plain_result(f"续写失败: {cont_result}")
+                        return
+                    message_text = await bartender_crawler.get_new_message_text(self)
+                    if message_text:
+                        yield event.plain_result(message_text)
+                    else:
+                        yield event.plain_result("合并消息为空")
+                else:
+                    yield event.plain_result("无角色卡")
+            except Exception as e:
+                logger.error(f"酒继续指令异常: {e}")
+                yield event.plain_result("指令执行异常，请稍后重试")
+            finally:
+                await bartender_crawler.close_browser_auto(self)
+                self.status_running = True
+        else:
+            yield event.plain_result("正在Shake~，请稍作等待")
+
+    @filter.command("酒停止生成")
+    async def command_stop_generation(self, event: AstrMessageEvent):
+        """中断当前酒馆生成"""
+        if self.status_running:
+            self.status_running = False
+            try:
+                await bartender_crawler.open_browser_auto(self, False)
+                result = await bartender_crawler.stop_generation(self)
+                yield event.plain_result(result)
+            except Exception as e:
+                logger.error(f"酒停止指令异常: {e}")
+                yield event.plain_result("指令执行异常，请稍后重试")
+            finally:
+                await bartender_crawler.close_browser_auto(self)
+                self.status_running = True
+        else:
+            yield event.plain_result("正在Shake~，请稍作等待")
+
+    @filter.command("酒swipe")
+    async def command_swipe_message(self, event: AstrMessageEvent):
+        """切换上一条/下一条备选回复，参数 上/下，默认下"""
+        if self.status_running:
+            self.status_running = False
+            try:
+                await bartender_crawler.open_browser_auto(self, False)
+                user_message = event.message_str.strip()
+                tokens = user_message.split()
+                arg = tokens[1] if len(tokens) > 1 else "下"
+                if arg in ("上", "左", "prev", "previous", "上一个"):
+                    direction = "prev"
+                else:
+                    direction = "next"
+                user_message = self.config['now_chats_name']
+                if user_message != "" and user_message != None:
+                    ok_persona, err_persona = await bartender_crawler.apply_user_persona(self, event) # 应用该用户绑定的人设
+                    if not ok_persona:
+                        yield event.plain_result(err_persona)
+                        return
+                    await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息
+                    swipe_result = await bartender_crawler.swipe_message(self, direction)
+                    if swipe_result != "正常":
+                        yield event.plain_result(swipe_result)
+                        return
+                    message_text = await bartender_crawler.get_new_message_text(self)
+                    if message_text:
+                        yield event.plain_result(message_text)
+                    else:
+                        yield event.plain_result("合并消息为空")
+                else:
+                    yield event.plain_result("无角色卡")
+            except Exception as e:
+                logger.error(f"酒swipe指令异常: {e}")
+                yield event.plain_result("指令执行异常，请稍后重试")
+            finally:
+                await bartender_crawler.close_browser_auto(self)
+                self.status_running = True
+        else:
+            yield event.plain_result("正在Shake~，请稍作等待")
+
+    @filter.command("酒导出")
+    async def command_export_chat(self, event: AstrMessageEvent):
+        """导出当前聊天记录为文件发送"""
+        if self.status_running:
+            self.status_running = False
+            try:
+                await bartender_crawler.open_browser_auto(self, False)
+                await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息
+                path = await bartender_crawler.export_current_chat(self)
+                if path and path.exists():
+                    yield event.plain_result("已导出当前聊天记录")
+                    yield event.chain_result([File.fromFileSystem(str(path))])
+                else:
+                    yield event.plain_result("导出失败，未找到当前聊天记录")
+            except Exception as e:
+                logger.error(f"酒导出指令异常: {e}")
+                yield event.plain_result("指令执行异常，请稍后重试")
+            finally:
+                await bartender_crawler.close_browser_auto(self)
+                self.status_running = True
+        else:
+            yield event.plain_result("正在Shake~，请稍作等待")
+
+    @filter.command("酒统计")
+    async def command_get_stats(self, event: AstrMessageEvent):
+        """查看当前角色聊天统计"""
+        if self.status_running:
+            self.status_running = False
+            try:
+                await bartender_crawler.open_browser_auto(self, False)
+                data = await bartender_crawler.get_current_stats(self)
+                if not data:
+                    yield event.plain_result("获取统计失败或无角色卡")
+                    return
+                name = data.get("name") or "未知"
+                s = data.get("stats")
+                if not s:
+                    yield event.plain_result(f"角色卡：{name}\n未找到该角色的聊天统计")
+                    return
+                gen_sec = round((s.get("total_gen_time") or 0) / 1000, 1) # 毫秒转秒
+                lines = [
+                    f"角色卡：{name}",
+                    f"消息数：用户 {s.get('user_msg_count', 0)} 条 / 角色 {s.get('non_user_msg_count', 0)} 条",
+                    f"字数：用户 {s.get('user_word_count', 0)} / 角色 {s.get('non_user_word_count', 0)}",
+                    f"备选回复(swipe)：{s.get('total_swipe_count', 0)}",
+                    f"生成总耗时：{gen_sec} 秒",
+                    f"聊天文件大小：{s.get('chat_size', 0)} 字节",
+                ]
+                last = s.get("date_last_chat")
+                first = s.get("date_first_chat")
+                if last and last < 1e14: # 排除远期哨兵值
+                    lines.append("最近对话：" + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(last / 1000)))
+                if first and first < 1e14:
+                    lines.append("首次对话：" + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(first / 1000)))
+                yield event.plain_result("\n".join(lines))
+            except Exception as e:
+                logger.error(f"酒统计指令异常: {e}")
+                yield event.plain_result("指令执行异常，请稍后重试")
+            finally:
+                await bartender_crawler.close_browser_auto(self)
+                self.status_running = True
+        else:
+            yield event.plain_result("正在Shake~，请稍作等待")
+
+    @filter.command("酒改名")
+    async def command_rename_character(self, event: AstrMessageEvent):
+        """重命名角色卡：/酒改名 旧名 新名"""
+        if self.status_running:
+            self.status_running = False
+            try:
+                await bartender_crawler.open_browser_auto(self, False)
+                user_message = event.message_str.strip()
+                tokens = user_message.split()
+                if len(tokens) < 3:
+                    yield event.plain_result("请输入：/酒改名 旧名 新名")
+                    return
+                old_name = tokens[1]
+                new_name = " ".join(tokens[2:])
+                if old_name == "Seraphina":
+                    yield event.plain_result("禁止修改默认角色名")
+                    return
+                ok, msg = await bartender_crawler.rename_character(self, old_name, new_name)
+                if not ok:
+                    yield event.plain_result(f"改名失败: {msg}")
+                    return
+                if self.config['now_chats_name'] == old_name: # 若改名的是当前角色，同步配置
+                    self.config['now_chats_name'] = new_name
+                    self.config.save_config()
+                chats = '\n'.join(self.chats_name_id.keys())
+                yield event.plain_result(f"已将「{old_name}」重命名为「{new_name}」\n当前角色列表：\n{chats}")
+            except Exception as e:
+                logger.error(f"酒改名指令异常: {e}")
+                yield event.plain_result("指令执行异常，请稍后重试")
+            finally:
+                await bartender_crawler.close_browser_auto(self)
+                self.status_running = True
+        else:
+            yield event.plain_result("正在Shake~，请稍作等待")
+
+    @filter.command("酒人设修改")
+    async def command_modify_persona(self, event: AstrMessageEvent):
+        """新建/修改/删除人设：/酒人设修改 [名字] [内容]；仅名字则删除，不存在则新建"""
+        if self.status_running:
+            self.status_running = False
+            try:
+                await bartender_crawler.open_browser_auto(self, False)
+                user_message = event.message_str.strip()
+                tokens = user_message.split()
+                if len(tokens) < 2:
+                    yield event.plain_result("请输入：/酒人设修改 [名字] [内容]（仅名字则删除该人设）")
+                    return
+                persona_name = tokens[1]
+                description = " ".join(tokens[2:]).strip()
+                await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息
+                personas, _ = await bartender_crawler.get_personas(self) # 判断人设是否存在
+                exists = bool(personas is not None and persona_name in personas)
+                if exists:
+                    if description:
+                        ok, msg = await bartender_crawler.set_persona_description(self, persona_name, description)
+                        action = "更新描述"
+                    else:
+                        ok, msg = await bartender_crawler.delete_persona(self, persona_name)
+                        action = "删除"
+                else:
+                    ok, msg = await bartender_crawler.create_persona(self, persona_name, description)
+                    action = "新建"
+                if ok:
+                    if action == "删除":
+                        yield event.plain_result(f"已删除人设：{persona_name}")
+                    elif action == "新建" and not description:
+                        yield event.plain_result(f"已新建空人设：{persona_name}")
+                    else:
+                        yield event.plain_result(f"已{action}人设：{persona_name}")
+                else:
+                    yield event.plain_result(f"{action}人设失败: {msg}")
+            except Exception as e:
+                logger.error(f"酒人设修改指令异常: {e}")
+                yield event.plain_result("指令执行异常，请稍后重试")
+            finally:
+                await bartender_crawler.close_browser_auto(self)
+                self.status_running = True
+        else:
+            yield event.plain_result("正在Shake~，请稍作等待")
+
     @filter.command("酒帮助")
     async def help_command(self, event: AstrMessageEvent):
         """指令帮助指南"""
@@ -1008,7 +1779,17 @@ class bartender_crawler(Star):
             +"/酒加卡 [图片] or /酒加卡\n"+"添加角色卡到酒馆，支持直接附带图片、引用(回复)含图消息、或指令后计时内单发图片三种方式\n"
             +"/酒删卡 [名字]\n"+"删除指定角色卡，若删除角色卡为当前角色卡则自动切换至默认，禁止删除默认卡\n"
             +"/酒重新\n"+"将最新楼层的输入重新生成并且返回，不输入任何参数\n"
+            +"/酒继续\n"+"续写最新楼层，让AI在最新回复后继续生成内容\n"
+            +"/酒swipe [上|下]\n"+"切换最新楼层的上一条/下一条备选回复，默认下（下一条会重新生成）\n"
+            +"/酒停止生成\n"+"中断当前正在进行的酒馆生成\n"
+            +"/酒新聊\n"+"与当前角色开始新对话（清空当前楼层）\n"
+            +"/酒导出\n"+"导出当前聊天记录为JSONL文件发送\n"
+            +"/酒统计\n"+"查看当前角色的聊天统计（消息数/字数/生成耗时等）\n"
+            +"/酒改名 [旧名] [新名]\n"+"重命名指定角色卡，禁止修改默认角色名\n"
             +"/酒查看\n"+"查看最新楼层的消息，当最新为用户输入时也会返回；引用一条消息后发送本指令，可定位其对应的楼层数\n"
+            +"/酒人设 [名字]\n"+"绑定当前用户的人设（酒馆 User Persona），之后 /酒 与 /酒重新 会先切换到你的人设再操作；不输入名字时查看绑定状态与人设列表\n"
+            +"/酒人设修改 [名字] [内容]\n"+"新建或修改人设：人设不存在则新建（仅名字为空人设），存在且有内容则改描述，存在且无内容则删除\n"
+            +"/酒人设解绑\n"+"解除当前用户绑定的人设\n"
             +"/酒状态\n"+"查看当前角色卡和角色卡列表以及浏览器的状态\n"
             +"/酒帮助\n"+"你现在不就在看我，你问我？\n"
             +"/酒启动[管理员指令]\n"+"用于启动插件目录中的酒馆，启动后自动连接\n"

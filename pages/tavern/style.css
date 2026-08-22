@@ -1,0 +1,159 @@
+:root {
+  --bg: #f5f7fa;
+  --panel: #ffffff;
+  --text: #1a1a1a;
+  --sub: #6b7280;
+  --border: #e5e7eb;
+  --primary: #4f46e5;
+  --primary-text: #ffffff;
+  --online: #22c55e;
+  --offline: #ef4444;
+  --unknown: #9ca3af;
+}
+
+[data-theme="dark"] {
+  --bg: #0f172a;
+  --panel: #1e293b;
+  --text: #e2e8f0;
+  --sub: #94a3b8;
+  --border: #334155;
+  --primary: #818cf8;
+  --primary-text: #0f172a;
+  --online: #4ade80;
+  --offline: #f87171;
+  --unknown: #64748b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--unknown);
+  flex-shrink: 0;
+}
+
+.dot.online {
+  background: var(--online);
+}
+
+.dot.offline {
+  background: var(--offline);
+}
+
+.status-text {
+  font-size: 14px;
+  color: var(--sub);
+}
+
+.addr-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+#addr {
+  background: var(--bg);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-size: 13px;
+  user-select: all;
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.btn:hover {
+  border-color: var(--primary);
+}
+
+.btn.primary {
+  background: var(--primary);
+  color: var(--primary-text);
+  border-color: var(--primary);
+}
+
+.btn.ghost {
+  background: transparent;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.fallback {
+  margin: 24px auto;
+  max-width: 560px;
+  padding: 22px 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  line-height: 1.7;
+  font-size: 14px;
+  color: var(--sub);
+}
+
+.fallback-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.fallback-desc {
+  margin: 0;
+}
+
+.frame {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: var(--bg);
+}

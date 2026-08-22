@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>酒馆界面</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="status">
+        <span id="dot" class="dot unknown"></span>
+        <span id="status-text" class="status-text">检测中…</span>
+      </div>
+      <div class="addr-wrap">
+        <code id="addr">—</code>
+        <button id="copy" class="btn ghost" type="button" title="复制地址">复制</button>
+      </div>
+      <button id="refresh" class="btn" type="button">刷新状态</button>
+      <button id="start" class="btn primary hidden" type="button">启动酒馆</button>
+    </div>
+
+    <div id="fallback" class="fallback hidden">
+      <p id="fallback-title" class="fallback-title">无法内嵌酒馆界面</p>
+      <p id="fallback-desc" class="fallback-desc">
+        请复制上方地址在新标签页打开。常见原因：浏览器混合内容拦截（面板 HTTPS 而酒馆 HTTP）或 Dashboard 沙箱存储限制。
+      </p>
+    </div>
+
+    <iframe id="frame" class="frame hidden" referrerpolicy="no-referrer"></iframe>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
