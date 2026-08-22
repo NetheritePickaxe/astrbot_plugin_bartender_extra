@@ -50,11 +50,13 @@ jobs:
         run: |
           ASSET_ID=$(gh api "repos/${{ github.repository }}/releases/tags/browser_dependence" \
             --jq '.assets[] | select(.name=="browser.zip") | .id' 2>/dev/null || true)
-          if [ -n "$ASSET_ID" ]; then
+          # 仅当结果是纯数字 ID 时才执行删除
+          # （Release 不存在时 gh api 返回 404，但错误 JSON 会输出到 stdout 被捕获）
+          if [[ "$ASSET_ID" =~ ^[0-9]+$ ]]; then
             echo "删除旧资产 ID: $ASSET_ID"
             gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$ASSET_ID"
           else
-            echo "无旧资产需要删除"
+            echo "Release 不存在或无旧资产，跳过删除"
           fi
 
       - name: 发布到 browser_dependence Release
