@@ -12,8 +12,8 @@ import urllib.request
 import zipfile
 
 # ======================== 配置区 ========================
-# 替换为你的实际 Release 下载链接
-DOWNLOAD_URL = "https://github.com/dragonuniverse8248/astrbot_plugin_bartender/releases/download/browser_dependence/browser.zip"
+# Release 下载链接（由 CI 工作流 browser-dependence.yml 自动构建并发布）
+DOWNLOAD_URL = "https://github.com/NetheritePickaxe/astrbot_plugin_bartender/releases/download/browser_dependence/browser.zip"
 
 # 下载的临时文件名
 ZIP_FILENAME = "browser.zip"

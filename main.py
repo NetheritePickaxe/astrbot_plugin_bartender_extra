@@ -17,7 +17,7 @@ os.environ["PWDEBUG"] = "0"
 @register("astrbot_plugin_bartender",
            "dragonuniverse8248编写 GML5.2 & deepseek指导",
             "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
-            "1.0.7")
+            "1.0.4")
 
 
 

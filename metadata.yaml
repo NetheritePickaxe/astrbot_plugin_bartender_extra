@@ -3,4 +3,4 @@ display_name: 调酒师
 desc: 基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起
 version: v1.0.4
 author: dragonuniverse8248编写 GML5.2 & deepseek指导 # 作者
-repo: "https://github.com/dragonuniverse8248/astrbot_plugin_bartender"
+repo: "https://github.com/NetheritePickaxe/astrbot_plugin_bartender"

@@ -1,0 +1,73 @@
+name: Build Browser Dependence
+
+# 手动触发：构建 Playwright 无头浏览器依赖包 (browser.zip)
+# 并发布到 browser_dependence 标签的 GitHub Release
+on:
+  workflow_dispatch:
+    inputs:
+      chrome_version:
+        description: "Chrome for Testing 版本号（win64）"
+        required: false
+        default: "148.0.7778.96"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: browser-dependence
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载 Chrome for Testing (win64)
+        run: |
+          VERSION="${{ inputs.chrome_version }}"
+          URL="https://storage.googleapis.com/chrome-for-testing-public/${VERSION}/win64/chrome-win64.zip"
+          echo "下载地址: $URL"
+          curl -fSL --retry 3 --retry-delay 5 -o chrome-win64.zip "$URL"
+
+      - name: 重打包为 browser.zip
+        run: |
+          unzip -q chrome-win64.zip
+          mv chrome-win64 browser
+          # 清理运行残留文件，保证产物干净
+          rm -f browser/debug.log "browser/First Run"
+          # 结构校验：main.py 期望 browser/chrome.exe
+          test -f browser/chrome.exe || { echo "::error::解压后未找到 browser/chrome.exe"; exit 1; }
+          zip -qr browser.zip browser
+          ls -lh browser.zip
+          echo "### 构建产物" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          ls -lh browser.zip | awk '{print $5, $9}' >> $GITHUB_STEP_SUMMARY
+          sha256sum browser.zip >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: 删除 Release 中旧的 browser.zip 资产（如存在）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ASSET_ID=$(gh api "repos/${{ github.repository }}/releases/tags/browser_dependence" \
+            --jq '.assets[] | select(.name=="browser.zip") | .id' 2>/dev/null || true)
+          if [ -n "$ASSET_ID" ]; then
+            echo "删除旧资产 ID: $ASSET_ID"
+            gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$ASSET_ID"
+          else
+            echo "无旧资产需要删除"
+          fi
+
+      - name: 发布到 browser_dependence Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: browser_dependence
+          name: Browser Dependence (${{ inputs.chrome_version }})
+          body: |
+            Playwright 无头浏览器依赖包（Windows x64）
+
+            - Chrome for Testing 版本: `${{ inputs.chrome_version }}`
+            - 内部结构: `browser/chrome.exe`（与 main.py 加载路径一致）
+            - 官方来源: https://googlechromelabs.github.io/chrome-for-testing/
+
+            使用方式：在插件目录下运行 `download_browser.bat`（Windows）或 `bash download_browser.sh` 自动下载并解压。
+          files: browser.zip
