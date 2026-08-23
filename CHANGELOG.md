@@ -1,5 +1,22 @@
 # 更新日志
 
+## [v1.6.3] — 2026-08-24
+
+### 移除
+- 移除浏览器手动下载机制：删除 `download_browser.{py,bat,sh}` 脚本与 `.github/workflows/browser-dependence.yml` CI 工作流，并删除 GitHub `browser_dependence` Release（含本地与远端标签）
+- 不再依赖插件目录下的 `browser/` 文件夹或 `executable_path` 指定本地浏览器
+
+### 变更
+- 浏览器改由 Playwright 默认 Chromium 提供（参考 `astrbot_plugin_steaminfo_xiaoheihe` 同方案），AstrBot 环境通常已内置，无需手动下载；缺失时执行一次 `playwright install chromium` 即可
+- `main.py` 移除 `self.browser_dir` 属性与本地 `chrome.exe`/`chrome` 查找逻辑，`chromium.launch()` 不再传 `executable_path`
+- 浏览器启动失败错误提示更新为引导执行 `playwright install chromium`
+- README「前置运行依赖说明」重写为单段说明，移除原三种获取浏览器教程
+
+### 修复
+- WebUI 页面 `:root` 深色变量对齐 SillyTavern 官方暗色调色板（近黑底 `#171717` + 象牙白 `#dcdcd2` + 琥珀强调 `#e18a24`），修复此前的深蓝色调问题；浅色主题保持不变
+
+---
+
 ## [v1.6.2] — 2026-08-23
 
 ### 移除

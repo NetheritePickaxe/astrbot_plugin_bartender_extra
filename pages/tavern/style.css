@@ -1,14 +1,14 @@
 :root {
-  --bg: #0f172a;
-  --panel: #1e293b;
-  --text: #e2e8f0;
-  --sub: #94a3b8;
-  --border: #334155;
-  --primary: #818cf8;
-  --primary-text: #0f172a;
+  --bg: #171717;
+  --panel: #242425;
+  --text: #dcdcd2;
+  --sub: #919191;
+  --border: #2d2d2d;
+  --primary: #e18a24;
+  --primary-text: #171717;
   --online: #4ade80;
   --offline: #f87171;
-  --unknown: #64748b;
+  --unknown: #7d7d7d;
 }
 
 [data-theme="light"] {

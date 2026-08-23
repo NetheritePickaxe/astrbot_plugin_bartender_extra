@@ -119,8 +119,8 @@ os.environ["PWDEBUG"] = "0"
 # 插件注册，参数分别为：插件名（唯一标识符）、作者、简介、版本号    
 @register(PLUGIN_NAME,
            "dragonuniverse8248编写 GML5.2 & deepseek指导",
-            "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
-              "1.6.2")
+             "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
+               "1.6.3")
 
 
 
@@ -143,7 +143,6 @@ class bartender_crawler(Star):
         self.chat_mode_user_keys = set() # 活跃的按用户聊天模式键 "{群号}_{用户ID}"
         self.chat_mode_group_keys = {} # 活跃的按群聊天模式键 "{群号}" -> 创建者键
         self.plugin_dir = Path(__file__).parent # 获取当前目录
-        self.browser_dir = self.plugin_dir / "browser"
         self.persona_bindings = self._load_persona_bindings() # 用户人设绑定字典，格式为: {"群号_用户ID": {"name": 人设名, "avatar_id": 人设头像ID}}
         self._st_install_status = None # 酒馆安装状态：None | "downloading" | "extracting" | "installing_deps" | "done" | "failed: <msg>"
         self._register_web_apis(context)
@@ -388,19 +387,10 @@ class bartender_crawler(Star):
             return False  # 不可达直接退出函数，不再启动浏览器
         await self._close_browser() # 先清理可能残留的旧浏览器（含孤儿进程）
         self.p = await async_playwright().start()
-        if os.name == 'nt':
-            exe_path = self.browser_dir / "chrome.exe"
-        else:
-            exe_path = self.browser_dir / "chrome"
-        launch_exe = str(exe_path) # 如果没有找到打包的浏览器，降级为使用 Playwright 默认下载的浏览器
-        launch_exe = str(exe_path) if exe_path.exists() else None
-        if not launch_exe:
-            logger.warning(f"未在 {self.browser_dir} 找到打包的浏览器，将尝试使用 Playwright 默认浏览器。")
         try:
             self.browser = await self.p.chromium.launch(
                 headless=bool(self.config['tavern']['browser_Visible']),
                 slow_mo=int(self.config['tavern']['browser_delay']),
-                executable_path=launch_exe, # 【修改】指定本地浏览器路径
                 args=[
                     '--no-sandbox', # Linux下必须，防止权限报错
                     '--disable-gpu', # 提高无头模式稳定性
@@ -413,7 +403,7 @@ class bartender_crawler(Star):
             logger.info(f"{self.ST_URL}页面加载成功")
             return True
         except Exception as e:
-            logger.error(f"请检查是否目录下是否有浏览器文件browser文件，或系统安装playwright的运行环境并且下载了浏览器依赖，若无请查看说明进行安装: {e}")
+            logger.error(f"浏览器启动失败，请确认已安装 playwright 依赖并执行过 `playwright install chromium`：{e}")
             return False
 
     async def check_browser(self):

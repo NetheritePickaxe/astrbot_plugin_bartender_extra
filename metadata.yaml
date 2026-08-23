@@ -2,6 +2,6 @@ name: astrbot_plugin_bartender_extra
 display_name: 调酒师-增强
 desc: 基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起
 short_desc: 通过机器人远程游玩 SillyTavern
-version: v1.6.2
+version: v1.6.3
 author: dragonuniverse8248编写 GML5.2 & deepseek指导 | NetheritePickaxe fork修改 # 作者
 repo: "https://github.com/NetheritePickaxe/astrbot_plugin_bartender_extra"

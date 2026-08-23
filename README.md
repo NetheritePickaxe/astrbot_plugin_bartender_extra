@@ -44,99 +44,23 @@ _✨ [AstrBot](https://github.com/AstrBotDevs/AstrBot) 酒馆（SillyTavern）�
 - 🛠️ **角色卡工具**：文字建卡（`/酒加卡 名字 [角色描述] [开场白]`，无需图片；同名卡存在时改为更新对应字段，支持 `[/]`=不改 与 `[]`=清空）
 - 📊 **数据工具**：聊天记录导出与整库备份（`/酒导出` 当前聊天为 JSONL；`/酒导出 data` 打包内置酒馆 data 目录为 zip 发送）、聊天统计（`/酒统计`）
 - 🌐 **英文指令别名**：全部指令支持英文别名（`tavern` / `tavern_help` / `tavern_add` 等），中英文指令均可使用
-- 📦 **一键部署**：内置 SillyTavern 下载脚本与浏览器自动下载脚本，WebUI 支持一键安装并启动酒馆
+- 📦 **一键部署**：内置 SillyTavern 下载脚本，WebUI 支持一键安装并启动酒馆
 - 🎁 **体验优化**：引用消息定位楼层、处理中表情回应、可选楼层数提示等
 
 ## 🖥️ 前置运行依赖说明
 
 > **基础依赖**：Python 3.10+ · 已部署运行的 [SillyTavern（酒馆）](https://github.com/SillyTavern/SillyTavern) · `playwright` / `aiohttp` 等 Python 包（插件安装时自动拉取）
 
-本插件基于 Playwright 操控 Chromium 浏览器实现对酒馆页面的自动化。由于 GitHub 仓库无法直接上传体积庞大的浏览器可执行文件，因此**需要用户自行获取浏览器内核**。
+本插件基于 Playwright 操控 Chromium 浏览器实现对酒馆页面的自动化。浏览器内核由 **Playwright 自动提供**，无需手动下载。
 
-插件启动时会按以下优先级查找浏览器：
-1. **插件目录 `browser/` 文件夹** → 手动放置或脚本下载的浏览器
-2. **Playwright 默认缓存路径** → 通过 `playwright install chromium` 安装的浏览器
-
-> 💡 推荐使用项目自带的**自动下载脚本**，一键完成下载与解压。
-
----
-
-### 🔧 方式一：一键安装脚本（推荐 ⭐）
-
-插件根目录自带了三个下载脚本，**无需手动操作**，脚本会自动完成检测→下载→解压全部流程：
-
-| 脚本文件 | 适用系统 | 使用方法 |
-|:--------|:--------:|:--------|
-| **`download_browser.bat`** | Windows | 双击运行，或在终端执行 `.\download_browser.bat` |
-| **`download_browser.sh`** | Linux / macOS | 在终端执行 `bash download_browser.sh` |
-| **`download_browser.py`** | 跨平台通用 | 在终端执行 `python download_browser.py`（Linux/Mac 用 `python3`） |
-
-#### 一步一步跟我做
-
-**Windows 用户：**
-
-1. 打开插件目录（例如 `AstrBot/data/plugins/astrbot_plugin_bartender_extra/`）
-2. 双击运行 **`download_browser.bat`**
-3. 等待脚本自动下载并解压，控制台会显示实时进度条
-4. 完成后，插件目录下会出现一个 **`browser/`** 文件夹，里面包含 `chrome.exe` 和大量配套文件
-
-```
-astrbot_plugin_bartender_extra/
-├── download_browser.bat   ← 双击这个！
-├── download_browser.py
-├── download_browser.sh
-├── main.py
-├── browser/               ← 脚本自动生成的文件夹
-│   ├── chrome.exe
-│   ├── chrome.dll
-│   └── ... (其他配套文件)
-└── ...
-```
-
-**Linux / macOS 用户：**
-
-1. 打开终端，进入插件目录：
-   ```bash
-   cd AstrBot/data/plugins/astrbot_plugin_bartender_extra
-   ```
-2. 运行下载脚本：
-   ```bash
-   bash download_browser.sh
-   ```
-3. 等待完成后，使用 `ls browser/` 确认 `chrome` 可执行文件已存在
-
-> 💡 如果 `browser/` 文件夹已存在，脚本会询问是否覆盖重新下载，输入 `y` 回车即可。脚本运行结束后会自动清理临时下载的 `browser.zip`，不会留下垃圾文件。
-
-
-
----
-
-### 📦 方式二：手动下载 GitHub Releases 压缩包
-
-1. 前往 [GitHub Releases](https://github.com/NetheritePickaxe/astrbot_plugin_bartender_extra/releases) 页面
-2. 下载 `browser.zip` 压缩包
-3. 将压缩包解压到插件根目录，确保最终目录结构为：
-
-```
-astrbot_plugin_bartender_extra/
-└── browser/
-    ├── chrome.exe    # Windows
-    └── chrome        # Linux/macOS（以及 chrome 相关 .dll/.pak 等文件）
-```
-
----
-
-### 🌐 方式三：通过 Playwright 官方渠道下载
-
-如果你已安装 `playwright` 模块，直接运行以下命令即可：
+- AstrBot 环境通常已内置 Playwright 的 Chromium，插件启动时直接调用
+- 若启动时提示找不到浏览器，执行一次以下命令即可（全局生效，仅需一次）：
 
 ```bash
 playwright install chromium
 ```
 
-> 💡 插件启动时会自动检测 Playwright 默认缓存路径中的 Chromium，无需指定下载目录，默认安装即可。
->
-> ⚠️ 此方式需要网络能正常访问 Playwright 的 CDN 下载源。若下载缓慢或失败，建议使用方式一或方式二。
+> 💡 与早期版本不同，本插件**不再**需要 `download_browser` 脚本，也不需要在插件目录下放置 `browser/` 文件夹。
 
 ## 📦 安装插件
 
@@ -268,7 +192,7 @@ git clone https://github.com/NetheritePickaxe/astrbot_plugin_bartender_extra
 ## 📌 注意事项
 
 - 插件需要已部署并运行中的 **SillyTavern（酒馆）** 前端页面，请确保 `browser_ip` 和 `browser_port` 配置正确
-- 若插件目录 `browser/` 下找不到浏览器，会自动降级尝试使用 **Playwright 默认缓存**中的 Chromium；若两处都没有，插件启动将报错，请参考上方「前置运行依赖说明」获取浏览器
+- 浏览器由 Playwright 自动提供，无需手动下载；若启动报错找不到浏览器，执行一次 `playwright install chromium` 即可
 - 角色卡上传仅支持 **PNG 格式** 的角色卡图片文件
 - 删除楼层时建议至少删除 **2 层**（包含用户输入层和 AI 回复层），删除最底层（1层且仅有1层）将不生效
 - 默认角色卡 `Seraphina` 不可删除，受到保护
