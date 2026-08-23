@@ -120,7 +120,7 @@ os.environ["PWDEBUG"] = "0"
 @register(PLUGIN_NAME,
            "dragonuniverse8248编写 GML5.2 & deepseek指导",
              "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
-               "1.6.3")
+               "1.6.4")
 
 
 
@@ -286,8 +286,12 @@ class bartender_crawler(Star):
                 await asyncio.sleep(2)
             self._update_install_status_from_log()
             rc = proc.returncode
+            st_dir = self.plugin_dir / "SillyTavern"
             if rc == 0:
-                self._st_install_status = "done"
+                if (st_dir / "node_modules").exists():
+                    self._st_install_status = "done"
+                else:
+                    self._st_install_status = "failed: 依赖未安装(请手动在 SillyTavern 目录执行 npm install)"
             else:
                 if not (self._st_install_status and self._st_install_status.startswith("failed")):
                     self._st_install_status = f"failed: exit code {rc}"
@@ -1381,6 +1385,30 @@ class bartender_crawler(Star):
             return -1, [f"""统计失败: {e}"""]
         return total, detail
 
+    async def _ensure_npm_install(self, st_dir):
+        """node_modules 缺失时自动执行 npm install（线程池执行，不阻塞事件循环）"""
+        npm_path = shutil.which("npm")
+        if not npm_path:
+            return False, """未检测到 npm，请确认 Node.js 已正确安装"""
+        logger.info(f"node_modules 缺失，自动执行 npm install（{st_dir}）…")
+        def _run() -> int:
+            if os.name == "nt":
+                return subprocess.run(
+                    "npm install --no-audit --no-fund",
+                    shell=True, cwd=str(st_dir), timeout=600,
+                ).returncode
+            return subprocess.run(
+                [npm_path, "install", "--no-audit", "--no-fund"],
+                cwd=str(st_dir), timeout=600,
+            ).returncode
+        try:
+            rc = await asyncio.to_thread(_run)
+        except Exception as e:
+            return False, f"""npm install 异常: {e}"""
+        if rc != 0:
+            return False, f"""npm install 失败(返回码 {rc})，请查看日志或手动在 SillyTavern 目录执行 npm install"""
+        return True, """依赖安装完成"""
+
     async def start_tavern(self):
         """启动插件目录中的酒馆（后台拉起 server.js）"""
         parsed = urlparse(self.ST_URL)
@@ -1404,6 +1432,10 @@ class bartender_crawler(Star):
             if os.name == "nt":
                 return False, """未检测到 Node.js，SillyTavern 需要 Node.js 18 或更高版本。请安装: winget install OpenJS.NodeJS.LTS"""
             return False, """未检测到 Node.js，SillyTavern 需要 Node.js 18 或更高版本。请通过 nvm 或官网安装"""
+        if not (st_dir / "node_modules").exists():
+            npm_ok, npm_msg = await self._ensure_npm_install(st_dir)
+            if not npm_ok:
+                return False, npm_msg
         # 后台启动
         log_path = self.cache_dir / "sillytavern.log"
         try:
@@ -1424,8 +1456,6 @@ class bartender_crawler(Star):
                 popen_kwargs["start_new_session"] = True
             proc = subprocess.Popen([node_path, str(st_dir / "server.js")], **popen_kwargs)
             self._st_proc = proc
-            proc.wait()
-            self._st_proc = None
         except Exception as e:
             return False, f"""启动失败: {e}"""
         # 等待就绪（最长约 60 秒）

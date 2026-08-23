@@ -256,15 +256,27 @@ def npm_install():
     else:
         print(f"  [信息] 检测到 Node.js v{major}，版本符合要求。")
 
+    npm_path = shutil.which("npm")
+    if not npm_path:
+        print("[错误] 未检测到 npm 命令，请确认 Node.js 已正确安装。")
+        return False
     print()
     print("正在安装依赖(可能需要几分钟，取决于网络速度)...")
     print()
     try:
-        result = subprocess.run(
-            ["npm", "install", "--no-audit", "--no-fund"],
-            cwd=TARGET_DIR,
-            timeout=600,
-        )
+        if sys.platform == "win32":
+            result = subprocess.run(
+                "npm install --no-audit --no-fund",
+                shell=True,
+                cwd=TARGET_DIR,
+                timeout=600,
+            )
+        else:
+            result = subprocess.run(
+                [npm_path, "install", "--no-audit", "--no-fund"],
+                cwd=TARGET_DIR,
+                timeout=600,
+            )
         if result.returncode != 0:
             print()
             print("[错误] 依赖安装失败！请检查上方报错信息。")

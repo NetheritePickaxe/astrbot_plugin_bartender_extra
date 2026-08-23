@@ -1,5 +1,17 @@
 # 更新日志
 
+## [v1.6.4] — 2026-08-24
+
+### 修复
+- 修复 Windows 下「安装酒馆」`npm install` 始终失败的问题：`subprocess.run(["npm", ...])` 在 `shell=False` 时 Windows 的 CreateProcess 无法解析 `npm.cmd`（只试 `.exe`），导致 `node_modules` 缺失、酒馆启动即崩（`ERR_MODULE_NOT_FOUND: yargs`）。改为 Windows 下 `shell=True` 经 cmd.exe 按 PATHEXT 解析 npm.cmd，Linux 保持 list 形式
+- 修复 `start_tavern` 中 `proc.wait()` 无限阻塞事件循环的潜在问题：server.js 成功启动后会永久挂起，现移除该阻塞，改为就绪轮询后正常返回
+
+### 变更
+- `/酒启动` 与 WebUI「启动酒馆」在检测到 `node_modules` 缺失时自动执行 `npm install`（线程池执行，不阻塞事件循环），无需用户手动安装依赖
+- WebUI 安装状态准确性：`_install_tavern_bg` 在进程退出码为 0 时校验 `node_modules` 是否存在，缺失则标记 `failed: 依赖未安装`，避免误报「安装完成」
+
+---
+
 ## [v1.6.3] — 2026-08-24
 
 ### 移除
