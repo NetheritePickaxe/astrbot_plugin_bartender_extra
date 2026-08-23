@@ -1560,7 +1560,7 @@ class bartender_crawler(Star):
                 if len(tokens) > 1: # 子命令模式
                     if tokens[1] == "绑定": # /酒人设 绑定 [名字]
                         if len(tokens) < 3:
-                            yield event.plain_result("""请输入：/酒人设 绑定 [人设名]""")
+                            yield event.plain_result("""请输入：/酒人设 绑定 <人设名>""")
                             return
                         persona_name = " ".join(tokens[2:])
                         ok, avatar_id = await bartender_crawler.switch_persona(self, persona_name)
@@ -2301,7 +2301,7 @@ class bartender_crawler(Star):
                 + f"""管理员模式：{("""开""")}""" + "\n"
                 + f"""白名单群聊：{(", ".join(whitelist) or """无""")}""" + "\n"
                 + f"""黑名单群聊：{(", ".join(blacklist) or """无""")}""" + "\n"
-                + """用法：/酒权限 管理 开|关｜/酒权限 白名单 [群号|移除 群号]｜/酒权限 黑名单 [群号|移除 群号]"""
+                + """用法：/酒权限 管理 开|关｜/酒权限 白名单 <群号|移除 群号>｜/酒权限 黑名单 <群号|移除 群号>"""
             )
             return
         sub = tokens[1]
@@ -2341,7 +2341,7 @@ class bartender_crawler(Star):
                 return
             yield event.plain_result(f"""{sub_label}当前群聊：{(", ".join(groups) or """无""")}""")
             return
-        yield event.plain_result("""未知子命令，用法：/酒权限 管理 开|关｜/酒权限 白名单 [群号|移除 群号]｜/酒权限 黑名单 [群号|移除 群号]""")
+        yield event.plain_result("""未知子命令，用法：/酒权限 管理 开|关｜/酒权限 白名单 <群号|移除 群号>｜/酒权限 黑名单 <群号|移除 群号>""")
 
     @filter.command("酒世界书")
     @_access_required
@@ -2355,7 +2355,7 @@ class bartender_crawler(Star):
                 tokens = user_message.split()
                 if len(tokens) > 1 and tokens[1] == "查看":
                     if len(tokens) < 3:
-                        yield event.plain_result("""请输入：/酒世界书 查看 [名字]""")
+                        yield event.plain_result("""请输入：/酒世界书 查看 <名字>""")
                         return
                     name = " ".join(tokens[2:])
                     data = await bartender_crawler.get_world_info_detail(self, name)
@@ -2383,7 +2383,7 @@ class bartender_crawler(Star):
                     yield event.plain_result("\n".join(lines))
                 elif len(tokens) > 1 and tokens[1] == "切换":
                     if len(tokens) < 3:
-                        yield event.plain_result("""请输入：/酒世界书 切换 [名字]""")
+                        yield event.plain_result("""请输入：/酒世界书 切换 <名字>""")
                         return
                     name = " ".join(tokens[2:])
                     await bartender_crawler.react_message(self, event)
