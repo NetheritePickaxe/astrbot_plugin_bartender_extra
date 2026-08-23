@@ -23,11 +23,11 @@ const ALL_BUTTONS = ["start", "install", "stop", "restart", "ext-tag", "export-d
 function applyStatus(info) {
   stUrl = info.st_url || "";
   $("addr").textContent = stUrl || "—";
-  _currentInfo = info;
   if (info.install_status) {
     applyInstallStatus(info.install_status);
     return;
   }
+  _currentInfo = info;
   if (info.reachable) {
     setStatus("酒馆在线", "online");
     setAllButtons({
@@ -76,7 +76,7 @@ function applyInstallStatus(status) {
     stopInstallPolling();
     setStatus("安装完成", "online");
     showMessage("SillyTavern 已安装，可点击「启动酒馆」启动。", "success");
-    applyStatus(_currentInfo || { st_url: stUrl, reachable: true, has_bundled_st: true });
+    applyStatus({ st_url: stUrl, reachable: true, has_bundled_st: true });
   } else if (typeof status === "string" && status.startsWith("failed")) {
     stopInstallPolling();
     setStatus("安装失败", "offline");
