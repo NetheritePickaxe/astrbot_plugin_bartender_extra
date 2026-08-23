@@ -57,16 +57,48 @@ os.environ["PWDEBUG"] = "0"
 
 # 爬虫类定义
 class bartender_crawler(Star):
+    def _migrate_config(self):
+        """兼容旧版扁平配置：把顶层单字段键迁入对应分组（tavern / basic / permission）并回写磁盘"""
+        OLD_KEY_TO_GROUP = {
+            "browser_ip": "tavern", "browser_port": "tavern", "browser_Visible": "tavern",
+            "browser_delay": "tavern", "upload_interval": "tavern", "low_memory_mode": "tavern",
+            "reaction_emoji": "basic", "show_floor_count": "basic",
+            "global_persona_binding": "basic", "now_chats_name": "basic",
+            "admin_only": "permission", "whitelist_groups": "permission", "blacklist_groups": "permission",
+        }
+        flat_keys = [k for k in OLD_KEY_TO_GROUP if k in self.config]
+        if not flat_keys:
+            return
+        logger.info(f"检测到旧版扁平配置，开始迁移：{flat_keys}")
+        for k in flat_keys:
+            grp = OLD_KEY_TO_GROUP[k]
+            if grp not in self.config or not isinstance(self.config[grp], dict):
+                self.config[grp] = {}
+            if k not in self.config[grp]:
+                self.config[grp][k] = self.config.pop(k)
+        try:
+            import json
+            config_path = Path("data/config") / f"{PLUGIN_NAME}_config.json"
+            if config_path.exists():
+                with open(config_path, "w", encoding="utf-8") as f:
+                    json.dump(dict(self.config), f, ensure_ascii=False, indent=4)
+                    f.write("\n")
+                logger.info(f"已回写迁移后的配置到 {config_path}")
+        except Exception as e:
+            logger.warning(f"回写迁移后的配置失败，将使用内存中的值：{e}")
+        self.config.save_config()
+
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
-        self.ST_URL = f"{config['browser_ip']}:{config['browser_port']}" # 获取配置的本地酒馆地址
-        self.chats_name_id = {} # 初始化角色字典
+        self.ST_URL = f"{config['browser_ip']}:{config['browser_port']}" # 获取配置的酒馆地址
+        self.chats_name_id = {} # 初始化角色卡字典
         self.default_chat = config['now_chats_name'] # 获取配置文件当前角色
-        self.browser = None # 初始化浏览器类
-        self._browser_lock = asyncio.Lock() # 浏览器启动/关闭互斥锁，防止并发重复启动出多个浏览器
+        self.browser = None # 初始化浏览器对象
+        self._browser_lock = asyncio.Lock() # 防止浏览器重复打开/关闭导致的并发问题
         self.status_running = False # 消息状态初始化
         self.config = config # 初始化配置文件
-        self.cache_dir = Path("data/temp/astrbot_plugin_bartender_extra") # 初始化本地缓存文件夹路径
+        self._migrate_config() # 兼容旧版扁平配置
+        self.cache_dir = Path("data/temp/astrbot_plugin_bartender_extra") # 初始化缓存目录路径
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.waiting_sessions = {} # 初始化会话状态字典，用于记录哪些用户正在等待发送图片，格式为: {"群号_用户ID": 过期时间戳}
         self.chat_mode_creators = {} # 酒馆聊天模式：创建者键"{群号}_{用户ID}" -> ("user"|"group", scope)
