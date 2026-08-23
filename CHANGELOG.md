@@ -1,5 +1,13 @@
 # 更新日志
 
+## [v1.6.8] — 2026-08-24
+
+### 修复
+- 修复内嵌酒馆 UI 与真实 webui 完全不同（控制台 `$ is not defined`、ST 渲染坏掉）的问题：Dashboard 用沙箱 iframe 内嵌，ST 处于不透明源；helmet 默认的 `Cross-Origin-Resource-Policy: same-origin` 把 ST 自身脚本（jQuery 等）当跨域拦掉，导致脚本全失效、UI 退化成裸 HTML
+- `_patch_st_frameguard` 升级为 `_patch_st_helmet`：除 `frameguard` 外再关闭 `crossOriginResourcePolicy` / `crossOriginOpenerPolicy` / `originAgentCluster`，去掉这三个响应头 → 沙箱 iframe 内 ST 脚本正常加载，渲染与真实 webui 一致；ST API 走 CORS（`cors.origin: ["null"]` 显式允许不透明源）→ 设置仍可服务端持久化
+
+---
+
 ## [v1.6.7] — 2026-08-24
 
 ### 修复

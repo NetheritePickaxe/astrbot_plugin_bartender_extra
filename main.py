@@ -120,7 +120,7 @@ os.environ["PWDEBUG"] = "0"
 @register(PLUGIN_NAME,
            "dragonuniverse8248编写 GML5.2 & deepseek指导",
               "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
-                "1.6.7")
+                "1.6.8")
 
 
 
@@ -1423,8 +1423,8 @@ class bartender_crawler(Star):
             return False, f"""npm install 失败(返回码 {rc})，请查看日志或手动在 SillyTavern 目录执行 npm install"""
         return True, """依赖安装完成"""
 
-    def _patch_st_frameguard(self, st_dir):
-        """幂等地给 ST 的 helmet 配置补 frameguard: false，去掉 X-Frame-Options: SAMEORIGIN，允许面板 iframe 内嵌"""
+    def _patch_st_helmet(self, st_dir):
+        """放宽 ST helmet 安全头（frameguard/CORP/COOP/OAC 关闭），允许被面板沙箱 iframe 内嵌并正常加载自身脚本"""
         f = st_dir / "src" / "server-main.js"
         if not f.exists():
             return
@@ -1433,18 +1433,24 @@ class bartender_crawler(Star):
         except Exception as e:
             logger.warning(f"读取 ST server-main.js 失败: {e}")
             return
-        if "frameguard" in text:
+        if "crossOriginResourcePolicy" in text:
             return
-        target = "    contentSecurityPolicy: false,\n}));"
-        replacement = "    contentSecurityPolicy: false,\n    frameguard: false,\n}));"
-        if target not in text:
-            logger.warning("未匹配到 ST helmet 配置，跳过 frameguard 修补（ST 版本可能已变更）")
+        extras = ("    crossOriginResourcePolicy: false,\n"
+                  "    crossOriginOpenerPolicy: false,\n"
+                  "    originAgentCluster: false,\n")
+        if "    frameguard: false,\n}));" in text:
+            text = text.replace("    frameguard: false,\n}));", extras + "}));", 1)
+        elif "    contentSecurityPolicy: false,\n}));" in text:
+            text = text.replace("    contentSecurityPolicy: false,\n}));",
+                                "    contentSecurityPolicy: false,\n    frameguard: false,\n" + extras + "}));", 1)
+        else:
+            logger.warning("未匹配到 ST helmet 配置，跳过补丁（ST 版本可能已变更）")
             return
         try:
-            f.write_text(text.replace(target, replacement, 1), encoding="utf-8")
-            logger.info("已为 ST 禁用 helmet frameguard（允许面板内嵌）")
+            f.write_text(text, encoding="utf-8")
+            logger.info("已放宽 ST helmet 安全头（frameguard/CORP/COOP/OAC off），允许面板沙箱 iframe 内嵌")
         except Exception as e:
-            logger.warning(f"修补 ST frameguard 失败: {e}")
+            logger.warning(f"修补 ST helmet 失败: {e}")
 
     async def start_tavern(self):
         """启动插件目录中的酒馆（后台拉起 server.js）"""
@@ -1473,7 +1479,7 @@ class bartender_crawler(Star):
             npm_ok, npm_msg = await self._ensure_npm_install(st_dir)
             if not npm_ok:
                 return False, npm_msg
-        self._patch_st_frameguard(st_dir)
+        self._patch_st_helmet(st_dir)
         # 后台启动
         log_path = self.cache_dir / "sillytavern.log"
         try:
