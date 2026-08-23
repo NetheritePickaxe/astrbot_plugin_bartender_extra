@@ -1,8 +1,4 @@
-# Changelog
-
-所有版本变更均记录在此文件中。
-
-本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 格式。
+# 更新日志
 
 本项目是 [dragonuniverse8248/astrbot_plugin_bartender](https://github.com/dragonuniverse8248/astrbot_plugin_bartender) 的 Fork 增强分支。
 
@@ -18,6 +14,10 @@
 
 ### 修复
 - 修复 metadata.yaml `display_name` 回归（恢复「调酒师-增强」）与 `short_desc` 缺失
+
+### 变更
+- 配置面板按功能分组（酒馆设置 / 基础设置 / 权限管理）
+- 优化低内存占用模式配置描述文案
 
 ### 新增
 - README 添加动态版本徽章（读 metadata.yaml 自动同步）
@@ -90,7 +90,7 @@
 
 ## [v1.0.3] — 原项目版本
 
-本项目 fork 自 [dragonuniverse8248/astrbot_plugin_bartender](https://github.com/dragonuniverse8248/astrbot_plugin_bartender)
+fork 自 [dragonuniverse8248/astrbot_plugin_bartender](https://github.com/dragonuniverse8248/astrbot_plugin_bartender)
 
 ---
 

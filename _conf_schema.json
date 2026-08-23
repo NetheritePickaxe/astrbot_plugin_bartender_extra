@@ -1,81 +1,99 @@
 {
-    "now_chats_name": {
-        "description": "当前角色卡",
-        "type": "string",
-        "hint": "此处用于储存和查看当前角色卡，不要从此处修改当前角色卡",
-        "invisible": "True",
-        "default": "Seraphina"
+    "tavern": {
+        "description": "酒馆连接",
+        "type": "object",
+        "items": {
+            "browser_ip": {
+                "description": "酒馆地址",
+                "type": "string",
+                "hint": "用于配置链接酒馆的远程地址和协议",
+                "default": "http://127.0.0.1"
+            },
+            "browser_port": {
+                "description": "酒馆端口",
+                "type": "string",
+                "hint": "用于配置链接酒馆的远程端口",
+                "default": "8000"
+            },
+            "browser_Visible": {
+                "description": "浏览器无头模式",
+                "type": "bool",
+                "hint": "关闭后浏览器可视化，用于调试和查看加载状态",
+                "default": true
+            },
+            "low_memory_mode": {
+                "description": "低内存占用模式",
+                "type": "bool",
+                "hint": "开启后每次执行指令时临时启动浏览器、执行完毕自动关闭，内存占用低但响应较慢；关闭后浏览器常驻后台，响应更快。两种模式均会防止浏览器进程残留，如遇异常可用 /酒进程 查看、/酒关闭 一键清理",
+                "default": false
+            },
+            "browser_delay": {
+                "description": "操作延迟",
+                "type": "int",
+                "hint": "每次点击和查找操作之间的延迟/单位毫秒",
+                "default": 50
+            },
+            "upload_interval": {
+                "description": "角色卡间隔",
+                "type": "int",
+                "hint": "等待角色卡上传的间隔时间/单位秒",
+                "default": 20
+            }
+        }
     },
-    "browser_ip": {
-        "description": "酒馆地址",
-        "type": "string",
-        "hint": "用于配置链接酒馆的远程地址和协议",
-        "default": "http://127.0.0.1"
+    "basic": {
+        "description": "基础设置",
+        "type": "object",
+        "items": {
+            "reaction_emoji": {
+                "description": "处理中表情回应",
+                "type": "string",
+                "hint": "指令处理期间给触发消息贴的QQ表情回应，代替文字占位提示。填QQ系统表情ID数字（如319=比心）或emoji字符（如🫶），留空则禁用；仅QQ平台生效，需协议端支持set_msg_emoji_like接口",
+                "default": "319"
+            },
+            "show_floor_count": {
+                "description": "显示楼层数",
+                "type": "bool",
+                "hint": "开启后 /酒 的回复会在正文前附带“当前共X楼层”；默认关闭只发正文。不影响 /酒查看",
+                "default": false
+            },
+            "global_persona_binding": {
+                "description": "全局人设绑定",
+                "type": "bool",
+                "hint": "开启后用户人设绑定按QQ号全局生效，同一用户在所有群共用一个人设；关闭时按群隔离，同一用户可在不同群绑定不同人设。默认关闭",
+                "default": false
+            },
+            "now_chats_name": {
+                "description": "当前角色卡",
+                "type": "string",
+                "hint": "此处用于储存和查看当前角色卡，不要从此处修改当前角色卡",
+                "invisible": true,
+                "default": "Seraphina"
+            }
+        }
     },
-    "browser_port": {
-        "description": "酒馆端口",
-        "type": "string",
-        "hint": "用于配置链接酒馆的远程端口",
-        "default": "8000"
-    },
-    "browser_delay": {
-        "description": "操作延迟",
-        "type": "int",
-        "hint": "每次点击和查找操作之间的延迟/单位毫秒",
-        "default": "50"
-    },
-    "upload_interval": {
-        "description": "角色卡间隔",
-        "type": "int",
-        "hint": "等待角色卡上传的间隔时间/单位秒",
-        "default": "20"
-    },
-    "reaction_emoji": {
-        "description": "处理中表情回应",
-        "type": "string",
-        "hint": "指令处理期间给触发消息贴的QQ表情回应，代替文字占位提示。填QQ系统表情ID数字（如319=比心）或emoji字符（如🫶），留空则禁用；仅QQ平台生效，需协议端支持set_msg_emoji_like接口",
-        "default": "319"
-    },
-    "show_floor_count": {
-        "description": "显示楼层数",
-        "type": "bool",
-        "hint": "开启后 /酒 的回复会在正文前附带“当前共X楼层”；默认关闭只发正文。不影响 /酒查看",
-        "default": false
-    },
-    "global_persona_binding": {
-        "description": "全局人设绑定",
-        "type": "bool",
-        "hint": "开启后用户人设绑定按QQ号全局生效，同一用户在所有群共用一个人设；关闭时按群隔离，同一用户可在不同群绑定不同人设。默认关闭",
-        "default": false
-    },
-    "browser_Visible": {
-        "description": "浏览器无头模式",
-        "type": "bool",
-        "hint": "关闭后浏览器可视化，用于调试和查看加载状态",
-        "default": true
-    },
-    "admin_only": {
-        "description": "管理员模式",
-        "type": "bool",
-        "hint": "开启后所有酒命令仅管理员可用；可用 /酒权限 管理 开|关 在QQ内实时切换",
-        "default": false
-    },
-    "whitelist_groups": {
-        "description": "群聊白名单",
-        "type": "list",
-        "hint": "允许使用酒命令的群号列表；为空表示不限制。可用 /酒权限 白名单 群号 维护",
-        "default": []
-    },
-    "blacklist_groups": {
-        "description": "群聊黑名单",
-        "type": "list",
-        "hint": "禁止使用酒命令的群号列表，优先于白名单。可用 /酒权限 黑名单 群号 维护",
-        "default": []
-    },
-    "low_memory_mode": {
-        "description": "低内存占用模式",
-        "type": "bool",
-        "hint": "开启后指令响应速度慢，执行指令时临时打开浏览器、结束后关闭，不常驻内存；关闭后指令响应速度快，浏览器常驻避免反复加载。两种模式均已防止多浏览器进程残留，若仍异常可用【酒进程】指令清理",
-        "default": false
+    "permission": {
+        "description": "权限管理",
+        "type": "object",
+        "items": {
+            "admin_only": {
+                "description": "管理员模式",
+                "type": "bool",
+                "hint": "开启后所有酒命令仅管理员可用；可用 /酒权限 管理 开|关 在QQ内实时切换",
+                "default": false
+            },
+            "whitelist_groups": {
+                "description": "群聊白名单",
+                "type": "list",
+                "hint": "允许使用酒命令的群号列表；为空表示不限制。可用 /酒权限 白名单 群号 维护",
+                "default": []
+            },
+            "blacklist_groups": {
+                "description": "群聊黑名单",
+                "type": "list",
+                "hint": "禁止使用酒命令的群号列表，优先于白名单。可用 /酒权限 黑名单 群号 维护",
+                "default": []
+            }
+        }
     }
 }

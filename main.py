@@ -106,19 +106,19 @@ class bartender_crawler(Star):
         """访问控制：黑名单优先、白名单限制群聊、管理员模式要求管理员；返回 (是否通过, 原因)"""
         gid = event.get_group_id()
         gid_s = str(gid) if gid is not None else ""
-        blacklist = [str(x) for x in (self.config.get('blacklist_groups') or [])]
-        whitelist = [str(x) for x in (self.config.get('whitelist_groups') or [])]
+        blacklist = [str(x) for x in (self.config['permission'].get('blacklist_groups') or [])]
+        whitelist = [str(x) for x in (self.config['permission'].get('whitelist_groups') or [])]
         if gid_s and gid_s in blacklist: # 群黑名单优先（私聊不适用群名单）
             return False, """本群已被加入黑名单，禁止使用酒命令"""
         if gid_s and whitelist and gid_s not in whitelist: # 白名单非空时仅允许列内群聊
             return False, """本群不在白名单内，禁止使用酒命令"""
-        if self.config.get('admin_only') and not event.is_admin(): # 管理员模式
+        if self.config['permission'].get('admin_only') and not event.is_admin(): # 管理员模式
             return False, """管理员模式已开启，该命令仅管理员可用"""
         return True, ""
 
     async def page_info(self):
         """返回酒馆地址、连通性、是否携带捆绑酒馆"""
-        st_url = f"{self.config['browser_ip']}:{self.config['browser_port']}"
+        st_url = f"{self.config['tavern']['browser_ip']}:{self.config['tavern']['browser_port']}"
         parsed = urlparse(st_url)
         host = parsed.hostname or parsed.path.split(":")[0]
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
@@ -133,8 +133,8 @@ class bartender_crawler(Star):
         has_bundled = (self.plugin_dir / "SillyTavern" / "server.js").exists()
         return json_response({
             "st_url": st_url,
-            "ip": self.config['browser_ip'],
-            "port": self.config['browser_port'],
+            "ip": self.config['tavern']['browser_ip'],
+            "port": self.config['tavern']['browser_port'],
             "reachable": reachable,
             "has_bundled_st": has_bundled,
             "install_status": self._st_install_status,
@@ -281,7 +281,7 @@ class bartender_crawler(Star):
 
     def get_persona_session_key(self, event) -> str:
         """计算用户人设绑定键：开启全局绑定仅用用户ID，否则用 群号_用户ID（按群隔离）"""
-        if self.config.get('global_persona_binding'):
+        if self.config['basic'].get('global_persona_binding'):
             return str(event.get_sender_id())
         return f"{event.get_group_id()}_{event.get_sender_id()}"
 
@@ -316,8 +316,8 @@ class bartender_crawler(Star):
             logger.warning(f"未在 {self.browser_dir} 找到打包的浏览器，将尝试使用 Playwright 默认浏览器。")
         try:
             self.browser = await self.p.chromium.launch(
-                headless=bool(self.config['browser_Visible']),
-                slow_mo=int(self.config['browser_delay']),
+                headless=bool(self.config['tavern']['browser_Visible']),
+                slow_mo=int(self.config['tavern']['browser_delay']),
                 executable_path=launch_exe, # 【修改】指定本地浏览器路径
                 args=[
                     '--no-sandbox', # Linux下必须，防止权限报错
@@ -421,7 +421,7 @@ class bartender_crawler(Star):
                 await self.check_confirm() # 检查是否有世界书和酒馆脚本确认
                 await self.page.locator("#rm_button_characters").click() # 切换回角色列表
                 await self.close_chats()
-                self.config['now_chats_name'] = name
+                self.config['basic']['now_chats_name'] = name
                 self.config.save_config()
                 logger.info(f"切换角色为：{name}")
                 return name
@@ -708,14 +708,14 @@ class bartender_crawler(Star):
             nodes_list = [
                 Node(
                     uin = bot_id,
-                    name = self.config['now_chats_name'],
+                    name = self.config['basic']['now_chats_name'],
                     content = [Plain(str(item))]
                 )
                 for item in message_list]
             if truncated:
                 nodes_list.append(Node(
                     uin = bot_id,
-                    name = self.config['now_chats_name'],
+                    name = self.config['basic']['now_chats_name'],
                     content = [Plain("""（内容过长，已截断）""")]
                 ))
             forward_message = Nodes(nodes=nodes_list)
@@ -747,18 +747,18 @@ class bartender_crawler(Star):
             try:
                 name = await self.page.locator("#rm_button_selected_ch").locator(".interactable").inner_text() # 检测当前状态
                 if name != "": # 检测并赋予角色卡
-                    self.config['now_chats_name'] = name
-                    logger.info(f"当前角色为：{self.config['now_chats_name']}")
+                    self.config['basic']['now_chats_name'] = name
+                    logger.info(f"当前角色为：{self.config['basic']['now_chats_name']}")
                     self.config.save_config()
                     return True
                 else:
-                    self.config['now_chats_name'] = None
+                    self.config['basic']['now_chats_name'] = None
                     logger.info(f"当前角色为：无")
                     return False
             except Exception as e:
                 await self.close_chats()
                 logger.error(f"角色检测错误{e}")
-        elif self.config['now_chats_name'] == (None or '') and self.chats_name_id == {}:
+        elif self.config['basic']['now_chats_name'] == (None or '') and self.chats_name_id == {}:
             logger.error("当前无角色或角色列表")
             return False
 
@@ -984,11 +984,11 @@ class bartender_crawler(Star):
 
     async def open_browser_auto(self, first : bool):
         """低内存占用模式判断开启"""
-        if self.config['low_memory_mode']: # 判断并且打开浏览器
+        if self.config['tavern']['low_memory_mode']: # 判断并且打开浏览器
             await self.initialize_browser() # 打开浏览器
             # await self.page.wait_for_timeout(800) # 等待防超时
             if first == False: # 初始化时无需打开角色卡
-                await self.switch_chats(self.config['now_chats_name']) # 角色切换保存
+                await self.switch_chats(self.config['basic']['now_chats_name']) # 角色切换保存
 
     async def check_confirm(self):
         """检测聊天确认框并点击"""
@@ -1063,7 +1063,7 @@ class bartender_crawler(Star):
 
     async def close_browser_auto(self):
         """低内存占用模式判断关闭"""
-        if self.config['low_memory_mode']: # 判断并且关闭浏览器
+        if self.config['tavern']['low_memory_mode']: # 判断并且关闭浏览器
             await self.close_browser()
 
     async def close_browser(self):
@@ -1211,8 +1211,8 @@ class bartender_crawler(Star):
             await self.page.locator(".popup-button-ok.menu_button[data-result='1']").click() # 点击确认删除
             await self.close_chats()
             await self.get_all_chats() # 获取角色列表
-            if self.config['now_chats_name'] == dal_name:
-                self.config['now_chats_name'] = "Seraphina"
+            if self.config['basic']['now_chats_name'] == dal_name:
+                self.config['basic']['now_chats_name'] = "Seraphina"
                 self.config.save_config()
 
     async def kill_chrome_process(self):
@@ -1368,7 +1368,7 @@ class bartender_crawler(Star):
                     message_text = await bartender_crawler.get_new_message_text(self) # 获取最新的消息文本
                     remaining = await bartender_crawler.get_now_floor(self,0) # 获取当前楼层数
                     if message_text:
-                        if self.config.get('show_floor_count'):
+                        if self.config['basic'].get('show_floor_count'):
                             yield event.plain_result(f"{f"""当前共{remaining}楼层"""}\n\n{message_text}")
                         else:
                             yield event.plain_result(message_text)
@@ -1510,7 +1510,7 @@ class bartender_crawler(Star):
             self.status_running = False
             try:
                 await bartender_crawler.open_browser_auto(self, False)
-                user_message = self.config['now_chats_name']
+                user_message = self.config['basic']['now_chats_name']
                 if user_message != "" and user_message != None:
                     ok_persona, err_persona = await bartender_crawler.apply_user_persona(self, event) # 应用该用户绑定的人设
                     if not ok_persona:
@@ -1589,10 +1589,10 @@ class bartender_crawler(Star):
             try:
                 await bartender_crawler.open_browser_auto(self, False)
                 await self.get_chat_Status()
-                if self.config['now_chats_name'] == None:
+                if self.config['basic']['now_chats_name'] == None:
                     chat = """无角色卡"""
                 else:
-                    chat = self.config['now_chats_name']
+                    chat = self.config['basic']['now_chats_name']
                 logger.info(f"角色卡：{chat}")
                 if await bartender_crawler.check_browser(self):
                     connect_status = """正常"""
@@ -1697,8 +1697,8 @@ class bartender_crawler(Star):
 {chats}""")
                 else: # 情况 B：指令和图片分条发送。为该用户开启等待状态，设定有效期
                     session_key = f"{event.get_group_id()}_{event.get_sender_id()}"
-                    self.waiting_sessions[session_key] = time.time() + int(self.config['upload_interval'])
-                    yield event.plain_result(f"""请在{self.config['upload_interval']}秒内发送角色卡""")
+                    self.waiting_sessions[session_key] = time.time() + int(self.config['tavern']['upload_interval'])
+                    yield event.plain_result(f"""请在{self.config['tavern']['upload_interval']}秒内发送角色卡""")
             except Exception as e:
                 logger.error(f"酒加卡指令异常: {e}")
                 yield event.plain_result("""指令执行异常，请稍后重试""")
@@ -1751,7 +1751,7 @@ class bartender_crawler(Star):
                 if not should_connect:
                     yield event.plain_result(result)
                     return
-                if self.config['low_memory_mode']:
+                if self.config['tavern']['low_memory_mode']:
                     await bartender_crawler.open_browser_auto(self, False)
                     await bartender_crawler.check_1000page(self)
                     await bartender_crawler.get_all_chats(self)
@@ -1760,7 +1760,7 @@ class bartender_crawler(Star):
                     await bartender_crawler.initialize_browser(self)
                     await bartender_crawler.check_1000page(self)
                     await bartender_crawler.get_all_chats(self)
-                    await bartender_crawler.switch_chats(self, self.config['now_chats_name'])
+                    await bartender_crawler.switch_chats(self, self.config['basic']['now_chats_name'])
                 yield event.plain_result(f"{result}{"""，已自动连接"""}")
             except Exception as e:
                 logger.error(f"酒启动指令异常: {e}")
@@ -1803,7 +1803,7 @@ class bartender_crawler(Star):
         self.chat_mode_creators = {} # 清空酒馆聊天模式创建记录
         self.chat_mode_user_keys = set() # 清空按用户聊天模式
         self.chat_mode_group_keys = {} # 清空按群聊天模式
-        self.config['now_chats_name'] = "Seraphina" # 当前角色切换至默认
+        self.config['basic']['now_chats_name'] = "Seraphina" # 当前角色切换至默认
         await bartender_crawler.get_all_chats(self) # 重新获取所有角色
         await bartender_crawler.switch_chats(self, "Seraphina") # 切换至默认卡
         await bartender_crawler.close_browser_auto(self)
@@ -1841,7 +1841,7 @@ class bartender_crawler(Star):
             self.status_running = False
             try:
                 await bartender_crawler.open_browser_auto(self, False)
-                user_message = self.config['now_chats_name']
+                user_message = self.config['basic']['now_chats_name']
                 if user_message != "" and user_message != None:
                     ok_persona, err_persona = await bartender_crawler.apply_user_persona(self, event) # 应用该用户绑定的人设
                     if not ok_persona:
@@ -1902,7 +1902,7 @@ class bartender_crawler(Star):
                     direction = "prev"
                 else:
                     direction = "next"
-                user_message = self.config['now_chats_name']
+                user_message = self.config['basic']['now_chats_name']
                 if user_message != "" and user_message != None:
                     ok_persona, err_persona = await bartender_crawler.apply_user_persona(self, event) # 应用该用户绑定的人设
                     if not ok_persona:
@@ -2018,8 +2018,8 @@ class bartender_crawler(Star):
                 if not ok:
                     yield event.plain_result(f"""改名失败: {(msg)}""")
                     return
-                if self.config['now_chats_name'] == old_name: # 若改名的是当前角色，同步配置
-                    self.config['now_chats_name'] = new_name
+                if self.config['basic']['now_chats_name'] == old_name: # 若改名的是当前角色，同步配置
+                    self.config['basic']['now_chats_name'] = new_name
                     self.config.save_config()
                 chats = '\n'.join(self.chats_name_id.keys())
                 yield event.plain_result(f"""已将「{old_name}」重命名为「{new_name}」
@@ -2062,7 +2062,7 @@ class bartender_crawler(Star):
             self.chat_mode_user_keys.add(user_key)
             self.chat_mode_creators[creator] = ("user", user_key)
             scope = """本人"""
-        chat = self.config.get('now_chats_name') or """无角色卡"""
+        chat = self.config['basic'].get('now_chats_name') or """无角色卡"""
         yield event.plain_result(
             f"""已进入酒馆聊天模式（{scope}）
 当前角色：{chat}
@@ -2094,9 +2094,9 @@ class bartender_crawler(Star):
         user_message = event.message_str.strip()
         tokens = user_message.split()
         if len(tokens) < 2: # 无子命令，查看当前设置
-            admin_only = bool(self.config.get('admin_only'))
-            whitelist = [str(x) for x in (self.config.get('whitelist_groups') or [])]
-            blacklist = [str(x) for x in (self.config.get('blacklist_groups') or [])]
+            admin_only = bool(self.config['permission'].get('admin_only'))
+            whitelist = [str(x) for x in (self.config['permission'].get('whitelist_groups') or [])]
+            blacklist = [str(x) for x in (self.config['permission'].get('blacklist_groups') or [])]
             yield event.plain_result(
                 """当前权限设置""" + "\n"
                 + f"""管理员模式：{("""开""")}""" + "\n"
@@ -2112,9 +2112,9 @@ class bartender_crawler(Star):
                 return
             sw = tokens[2]
             if sw == "开":
-                self.config['admin_only'] = True
+                self.config['permission']['admin_only'] = True
             elif sw == "关":
-                self.config['admin_only'] = False
+                self.config['permission']['admin_only'] = False
             else:
                 yield event.plain_result("""参数错误，用法：/酒权限 管理 开|关""")
                 return
@@ -2124,11 +2124,11 @@ class bartender_crawler(Star):
         if sub in ("白名单", "黑名单"):
             key = 'whitelist_groups' if sub == "白名单" else 'blacklist_groups'
             sub_label = f"""白名单"""
-            groups = [str(x) for x in (self.config.get(key) or [])]
+            groups = [str(x) for x in (self.config['permission'].get(key) or [])]
             if len(tokens) >= 4 and tokens[2] in ("移除", "删除", "-"):
                 gid = tokens[3]
                 groups = [g for g in groups if g != gid]
-                self.config[key] = groups
+                self.config['permission'][key] = groups
                 self.config.save_config()
                 yield event.plain_result(f"""已从{sub_label}移除群聊：{gid}""")
                 return
@@ -2136,7 +2136,7 @@ class bartender_crawler(Star):
                 gid = tokens[2]
                 if gid not in groups:
                     groups.append(gid)
-                    self.config[key] = groups
+                    self.config['permission'][key] = groups
                     self.config.save_config()
                 yield event.plain_result(f"""已将群聊 {gid} 加入{sub_label}，当前{sub_label}：{(", ".join(groups) or """无""")}""")
                 return
@@ -2268,7 +2268,7 @@ class bartender_crawler(Star):
                         message_text = await bartender_crawler.get_new_message_text(self) # 获取最新消息文本
                         remaining = await bartender_crawler.get_now_floor(self, 0) # 获取当前楼层数
                         if message_text:
-                            if self.config.get('show_floor_count'):
+                            if self.config['basic'].get('show_floor_count'):
                                 yield event.plain_result(f"{f"""当前共{remaining}楼层"""}\n\n{message_text}")
                             else:
                                 yield event.plain_result(message_text)
@@ -2320,7 +2320,7 @@ class bartender_crawler(Star):
     async def initialize(self):
         """异步的插件初始化方法，当插件被加载/启用时会调用。"""
         try:
-            if self.config['low_memory_mode']:
+            if self.config['tavern']['low_memory_mode']:
                 await bartender_crawler.open_browser_auto(self, True)
                 await bartender_crawler.check_1000page(self) # 检查是为1000分页
                 await bartender_crawler.get_all_chats(self) # 获取角色列表
@@ -2329,7 +2329,7 @@ class bartender_crawler(Star):
                 await bartender_crawler.initialize_browser(self) # 打开浏览器并访问页面
                 await bartender_crawler.check_1000page(self) # 检查是为1000分页
                 await bartender_crawler.get_all_chats(self) # 获取角色列表
-                await bartender_crawler.switch_chats(self, self.config['now_chats_name']) # 角色切换保存
+                await bartender_crawler.switch_chats(self, self.config['basic']['now_chats_name']) # 角色切换保存
         except Exception as e:
             logger.error(f"插件初始化失败: {e}")
         self.status_running = True
