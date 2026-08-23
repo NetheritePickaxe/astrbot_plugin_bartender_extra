@@ -7,51 +7,27 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <div class="topbar">
-      <div class="status">
-        <span id="dot" class="dot unknown"></span>
-        <span id="status-text" class="status-text">检测中…</span>
+    <div class="panel">
+      <div class="panel-header">
+        <h1>酒馆控制面板</h1>
+        <div class="status-row">
+          <span id="dot" class="dot unknown"></span>
+          <span id="status-text" class="status-label">检测中…</span>
+          <code id="addr" class="addr">—</code>
+          <button id="copy" class="btn-icon" type="button" title="复制地址">复制</button>
+        </div>
       </div>
-      <div class="addr-wrap">
-        <code id="addr">—</code>
-        <button id="copy" class="btn ghost" type="button" title="复制地址">复制</button>
+      <div id="btn-grid" class="btn-grid">
+        <button id="start" class="btn primary hidden">启动酒馆</button>
+        <button id="install" class="btn primary hidden">安装酒馆</button>
+        <button id="stop" class="btn hidden">关闭酒馆</button>
+        <button id="restart" class="btn hidden">重启酒馆</button>
+        <button id="ext-tag" class="btn hidden">打开外部酒馆</button>
+        <button id="export-data" class="btn hidden">导出整库备份</button>
+        <button id="refresh" class="btn hidden">刷新状态</button>
       </div>
-      <button id="refresh" class="btn" type="button">刷新状态</button>
+      <div id="message" class="message hidden"></div>
     </div>
-
-    <div class="panel-grid">
-      <div class="card">
-        <div class="card-title">酒馆服务</div>
-        <div class="card-actions">
-          <button id="start" class="btn primary hidden" type="button">启动酒馆</button>
-          <button id="install" class="btn primary hidden" type="button">安装酒馆</button>
-          <div id="stop-wrap" class="split hidden">
-            <button id="stop-btn" class="btn primary split-main" type="button">关闭酒馆</button>
-            <button id="stop-menu-btn" class="btn primary split-caret" type="button" aria-label="更多操作">▾</button>
-            <div id="stop-menu" class="split-menu hidden">
-              <button type="button" data-act="stop">关闭</button>
-              <button type="button" data-act="restart">重启</button>
-            </div>
-          </div>
-          <button id="stop-all" class="btn hidden" type="button">关闭全部</button>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">外部打开</div>
-        <div class="card-actions">
-          <button id="ext-tag" class="btn ext-tag hidden" type="button" title="在新标签页打开酒馆">在新标签页打开酒馆</button>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">数据工具</div>
-        <div class="card-actions">
-          <button id="export-data" class="btn" type="button">导出整库备份</button>
-        </div>
-      </div>
-    </div>
-
-    <div id="message" class="message-area hidden"></div>
-
     <script type="module" src="./app.js"></script>
   </body>
 </html>

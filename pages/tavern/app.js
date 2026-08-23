@@ -3,10 +3,7 @@ const $ = (id) => document.getElementById(id);
 
 let stUrl = "";
 let flashTimer = null;
-let lastInfo = null;
-let lastError = null;
 let installPollTimer = null;
-let lastActionBtn = null;
 
 function applyLang() {
   try {
@@ -20,42 +17,21 @@ function setStatus(text, kind) {
   $("dot").className = "dot " + (kind || "unknown");
 }
 
-const KNOWN_ACTIONS = ["start", "install", "stop-wrap", "stop-all", "ext-tag"];
-
-function revealAction(id) {
-  hideActions();
-  if (id === "stop-wrap") {
-    const w = $("stop-wrap");
-    if (w) w.classList.remove("hidden");
-  } else {
-    const el = $(id);
-    if (el) el.classList.remove("hidden");
-  }
-  lastActionBtn = KNOWN_ACTIONS.includes(id) ? id : null;
-  try { localStorage.setItem("st_action_btn", lastActionBtn || ""); } catch {}
-}
-
-function hideActions() {
-  KNOWN_ACTIONS.forEach((id) => {
+function showButtons(ids) {
+  ["start", "install", "stop", "restart", "ext-tag", "export-data", "refresh"].forEach((id) => {
     const el = $(id);
     if (el) el.classList.add("hidden");
   });
-  lastActionBtn = null;
-  try { localStorage.removeItem("st_action_btn"); } catch {}
-}
-
-function setActionLoading(on, text) {
-  if (!lastActionBtn) return;
-  const el = $(lastActionBtn);
-  if (!el) return;
-  el.disabled = !!on;
-  if (text !== undefined) el.textContent = text;
+  ids.forEach((id) => {
+    const el = $(id);
+    if (el) el.classList.remove("hidden");
+  });
 }
 
 function showMessage(text, kind) {
   const m = $("message");
   m.textContent = text;
-  m.className = "message-area " + (kind || "info");
+  m.className = "message " + (kind || "info");
   m.classList.remove("hidden");
   clearTimeout(flashTimer);
   flashTimer = setTimeout(() => {
@@ -72,24 +48,19 @@ function applyStatus(info) {
   }
   if (info.reachable) {
     setStatus("酒馆在线", "online");
-    if (info.has_bundled_st) {
-      revealAction("stop-wrap");
-    } else {
-      revealAction("ext-tag");
-    }
-    revealAction("ext-tag");
+    showButtons(["stop", "restart", "ext-tag", "export-data", "refresh"]);
   } else {
     setStatus("酒馆未连接", "offline");
     if (info.has_bundled_st) {
-      revealAction("start");
+      showButtons(["start", "refresh"]);
     } else {
-      revealAction("install");
+      showButtons(["install", "refresh"]);
     }
   }
 }
 
 function applyInstallStatus(status) {
-  hideActions();
+  showButtons([]);
   if (status === "downloading" || status === "starting") {
     setStatus("安装中…", "unknown");
     showMessage("正在下载酒馆…", "info");
@@ -103,12 +74,12 @@ function applyInstallStatus(status) {
     stopInstallPolling();
     setStatus("安装完成", "online");
     showMessage("SillyTavern 已安装，可点击「启动酒馆」启动。", "success");
-    revealAction("start");
+    showButtons(["start"]);
   } else if (typeof status === "string" && status.startsWith("failed")) {
     stopInstallPolling();
     setStatus("安装失败", "offline");
     showMessage(status, "error");
-    revealAction("install");
+    showButtons(["install"]);
   }
 }
 
@@ -117,7 +88,6 @@ async function pollInstall() {
   installPollTimer = setInterval(async () => {
     try {
       const info = await bridge.apiGet("info");
-      lastInfo = info;
       if (!info.install_status) {
         stopInstallPolling();
         applyStatus(info);
@@ -126,9 +96,8 @@ async function pollInstall() {
       applyInstallStatus(info.install_status);
     } catch (e) {
       stopInstallPolling();
-      lastError = e.message || "请稍后重试。";
       setStatus("状态获取失败", "offline");
-      showMessage(lastError, "error");
+      showMessage(e.message || "请稍后重试。", "error");
     }
   }, 2000);
 }
@@ -141,23 +110,20 @@ function stopInstallPolling() {
 }
 
 async function refreshStatus() {
-  lastInfo = null;
-  lastError = null;
   setStatus("检测中…", "unknown");
-  if (lastActionBtn) setActionLoading(true, "检测中…");
   try {
     const info = await bridge.apiGet("info");
-    lastInfo = info;
     applyStatus(info);
   } catch (e) {
-    lastError = e.message || "请稍后重试。";
     setStatus("状态获取失败", "offline");
-    showMessage(lastError, "error");
+    showMessage(e.message || "请稍后重试。", "error");
   }
 }
 
 async function startTavern() {
-  setActionLoading(true, "启动中…");
+  const btn = $("start");
+  btn.disabled = true;
+  btn.textContent = "启动中…";
   try {
     const r = await bridge.apiPost("tavern/start", {});
     if (r && r.ok) {
@@ -168,15 +134,16 @@ async function startTavern() {
     }
   } catch (e) {
     showMessage(e.message || "启动失败", "error");
-  }
-  if (lastActionBtn) {
-    const el = $(lastActionBtn);
-    if (el) { el.disabled = false; el.textContent = "启动酒馆"; }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "启动酒馆";
   }
 }
 
 async function installTavern() {
-  setActionLoading(true, "安装中…");
+  const btn = $("install");
+  btn.disabled = true;
+  btn.textContent = "安装中…";
   try {
     const r = await bridge.apiPost("tavern/install", {});
     if (r && r.ok) {
@@ -188,16 +155,16 @@ async function installTavern() {
     }
   } catch (e) {
     showMessage(e.message || "安装失败", "error");
-  }
-  if (lastActionBtn) {
-    const el = $(lastActionBtn);
-    if (el) { el.disabled = false; el.textContent = "安装酒馆"; }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "安装酒馆";
   }
 }
 
 async function stopTavern() {
-  hideMenu();
-  setActionLoading(true, "关闭中…");
+  const btn = $("stop");
+  btn.disabled = true;
+  btn.textContent = "关闭中…";
   try {
     const r = await bridge.apiPost("tavern/stop", {});
     if (r && r.ok) {
@@ -208,16 +175,16 @@ async function stopTavern() {
     }
   } catch (e) {
     showMessage(e.message || "关闭失败", "error");
-  }
-  if (lastActionBtn === "stop-wrap") {
-    const main = $("stop-btn");
-    if (main) { main.disabled = false; main.textContent = "关闭酒馆"; }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "关闭酒馆";
   }
 }
 
 async function restartTavern() {
-  hideMenu();
-  setActionLoading(true, "重启中…");
+  const btn = $("restart");
+  btn.disabled = true;
+  btn.textContent = "重启中…";
   try {
     const r = await bridge.apiPost("tavern/restart", {});
     if (r && r.ok) {
@@ -228,29 +195,9 @@ async function restartTavern() {
     }
   } catch (e) {
     showMessage(e.message || "重启失败", "error");
-  }
-  if (lastActionBtn === "stop-wrap") {
-    const main = $("stop-btn");
-    if (main) { main.disabled = false; main.textContent = "关闭酒馆"; }
-  }
-}
-
-async function stopAll() {
-  setActionLoading(true, "关闭中…");
-  try {
-    const r = await bridge.apiPost("tavern/stop", {});
-    if (r && r.ok) {
-      showMessage("酒馆已关闭，浏览器已清理", "success");
-      await refreshStatus();
-    } else {
-      showMessage((r && r.message) || "关闭失败", "error");
-    }
-  } catch (e) {
-    showMessage(e.message || "关闭失败", "error");
-  }
-  if (lastActionBtn) {
-    const el = $(lastActionBtn);
-    if (el) { el.disabled = false; el.textContent = "关闭全部"; }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "重启酒馆";
   }
 }
 
@@ -271,14 +218,6 @@ async function exportData() {
     btn.disabled = false;
     btn.textContent = "导出整库备份";
   }
-}
-
-function showMenu() {
-  $("stop-menu").classList.remove("hidden");
-}
-
-function hideMenu() {
-  $("stop-menu").classList.add("hidden");
 }
 
 async function copyAddr() {
@@ -314,21 +253,9 @@ function bind() {
   $("refresh").addEventListener("click", refreshStatus);
   $("start").addEventListener("click", startTavern);
   $("install").addEventListener("click", installTavern);
+  $("stop").addEventListener("click", stopTavern);
+  $("restart").addEventListener("click", restartTavern);
   $("copy").addEventListener("click", copyAddr);
-  $("stop-btn").addEventListener("click", stopTavern);
-  $("stop-menu-btn").addEventListener("click", (e) => {
-    e.stopPropagation();
-    showMenu();
-  });
-  document.addEventListener("click", hideMenu);
-  $("stop-menu").addEventListener("click", (e) => e.stopPropagation());
-  document.querySelectorAll("[data-act]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const act = btn.dataset.act;
-      if (act === "stop") stopTavern();
-      else if (act === "restart") restartTavern();
-    });
-  });
   if ($("ext-tag")) {
     $("ext-tag").addEventListener("click", () => {
       if (stUrl) window.open(stUrl, "_blank", "noopener");
@@ -342,11 +269,5 @@ function bind() {
 await bridge.ready();
 applyLang();
 bridge.onContext(applyLang);
-
-try {
-  const restored = localStorage.getItem("st_action_btn");
-  if (restored && KNOWN_ACTIONS.includes(restored)) revealAction(restored);
-} catch {}
-
 bind();
 refreshStatus();
