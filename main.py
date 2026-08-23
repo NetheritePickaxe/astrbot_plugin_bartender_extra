@@ -2205,15 +2205,12 @@ class bartender_crawler(Star):
         else:
             yield event.plain_result("""正在Shake~，请稍作等待""")
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("酒导出")
-    @_access_required
     async def command_export_chat(self, event: AstrMessageEvent):
         """导出当前聊天记录为文件发送；/酒导出 data 打包内置酒馆数据目录（管理员）"""
         args = event.message_str.strip().split()
         if len(args) > 1 and args[1] == "data": # 整库备份：纯文件操作，不占用全局互斥
-            if not event.is_admin():
-                yield event.plain_result("""该子命令仅管理员可用""")
-                return
             if bartender_crawler._export_busy:
                 yield event.plain_result("""正在打包中，请稍作等待""")
                 return

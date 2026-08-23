@@ -1,9 +1,5 @@
 # 更新日志
 
-本项目是 [dragonuniverse8248/astrbot_plugin_bartender](https://github.com/dragonuniverse8248/astrbot_plugin_bartender) 的 Fork 增强分支。
-
----
-
 ## [v1.6.2] — 2026-08-23
 
 ### 移除
@@ -27,6 +23,8 @@
 - `/酒加卡` 支持更新已有角色卡：同名卡存在时按括号参数覆盖描述/开场白（整卡对象回传，避免未提供字段被酒馆置空）；特殊值 `[/]`=保留原值、`[]`=清空、省略括号=不改
 - `/酒人设 修改 名字 [内容]` 同步括号语法：内容用中括号包裹防止空格换行出错
 - `/酒导出 data` 整库备份：打包内置酒馆 `data` 目录（排除 `backups/`）为 zip 发送 QQ 文件；超过 2 GB 拒绝；仅管理员可用，异步打包防阻塞，保留最新一个备份
+- `/酒导出` 整体升级为管理员指令（无参导出当前聊天 JSONL 亦需管理员权限）
+- WebUI 主题修复：`:root` 默认深色（与 SillyTavern 官方暗色一致），`[data-theme="light"]` 浅色覆盖；bridge 自动处理 `data-theme` 跟随面板主题；补 `applyLang()` 语言同步与 `bridge.onContext` 回调注册
 
 > **⚠️ 配置迁移提示**：升级后 `thread_safe_mode` 旧键失效，该设置将重置为默认关闭；如需重新启用请在 AstrBot 插件配置中手动开启 `low_memory_mode`。`browser_Visible` 沿用用户已保存值，未修改过的用户将自动生效为无头模式。
 
@@ -97,7 +95,3 @@
 ## [v1.0.3] — 原项目版本
 
 fork 自 [dragonuniverse8248/astrbot_plugin_bartender](https://github.com/dragonuniverse8248/astrbot_plugin_bartender)
-
----
-
-## 版本说明

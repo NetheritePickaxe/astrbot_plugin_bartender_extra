@@ -8,14 +8,11 @@ let lastError = null;
 let installPollTimer = null;
 let lastActionBtn = null;
 
-// 主题跟随：读取面板当前深色/浅色状态，同步到 HTML lang 与 data-theme 属性
-function applyTheme() {
+// 语言同步：bridge 的 applyContext 已自动处理 data-theme，这里只补 lang 属性
+function applyLang() {
   try {
     const ctx = bridge.getContext();
     document.documentElement.lang = (ctx && ctx.lang) || "zh-CN";
-    if (ctx && ctx.isDark !== undefined) {
-      document.documentElement.setAttribute("data-theme", ctx.isDark ? "dark" : "light");
-    }
   } catch {}
 }
 
@@ -361,6 +358,10 @@ function bind() {
 }
 
 await bridge.ready();
+
+// 语言同步（bridge 已自动处理 data-theme 主题跟随）
+applyLang();
+bridge.onContext(applyLang);
 
 // 恢复上次 session 的操作按钮（F5 重载时避免按钮直接消失）
 try {

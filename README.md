@@ -167,7 +167,7 @@ git clone https://github.com/NetheritePickaxe/astrbot_plugin_bartender_extra
 | `/酒备选 <上\|下>`  | `tavern_swipe`    | 上/下（可选，默认下） | 切换最新楼层的上一条/下一条备选回复；下一条会重新生成 |
 | `/酒中断`           | `tavern_stop`     | 无                 | 中断当前正在进行的酒馆生成 |
 | `/酒新建`           | `tavern_new`      | 无                 | 与当前角色开始新对话（清空当前楼层） |
-| `/酒导出` 或 `/酒导出 data` | `tavern_export`   | `-` 或 `data`        | 无参：导出当前聊天记录为 JSONL 文件发送；`data`：打包内置酒馆数据目录（管理员）为 zip 文件发送 |
+| `/酒导出` 或 `/酒导出 data` | `tavern_export`   | 🔒 管理员          | 无参：导出当前聊天记录为 JSONL 文件发送；`data`：打包内置酒馆数据目录为 zip 文件发送 |
 | `/酒统计`           | `tavern_stats`    | 无                 | 查看当前角色的聊天统计（消息数/字数/生成耗时等） |
 | `/酒查看`           | `tavern_view`     | 无                 | 查看最新楼层；引用一条消息后发送可定位其楼层数 |
 | `/酒人设`           | `tavern_persona`  | 无                 | 查看当前绑定人设与酒馆人设列表 |
