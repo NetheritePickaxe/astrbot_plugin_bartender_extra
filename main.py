@@ -36,6 +36,12 @@ def _split_bracket_args(text):
     return head, segs
 
 
+def _norm_field(seg):
+    """规范化括号字段值："/" 表示保留原值（返回 None），空串表示清空，其余原样返回"""
+    seg = seg.strip()
+    return None if seg == "/" else seg
+
+
 def _build_card_png(name, description, first_mes):
     """纯 Python 生成最小 V2 角色卡 PNG（1x1 像素 + tEXt chara 块），返回本地文件路径"""
     import base64
@@ -1027,6 +1033,37 @@ class bartender_crawler(Star):
             logger.error(f"导出聊天记录失败：{e}")
             return None
 
+    async def edit_card_fields(self, name, new_desc, new_mes):
+        """更新同名角色卡的描述与开场白；返回 {exists, ok}，None=异常；None 字段保留原值。
+        酒馆 /api/characters/edit 会置空未提供字段，故先取完整角色对象整体回传"""
+        try:
+            if not await self.check_browser():
+                return {"exists": False}
+            result = await self.page.evaluate(
+                """async ([name, desc, mes]) => {
+                    const all = await fetch('/api/characters/all', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}).then(r => r.ok ? r.json() : null);
+                    const list = Array.isArray(all) ? all : (all && typeof all === 'object' ? Object.values(all) : []);
+                    const item = list.find(c => c && c.name === name);
+                    if (!item) return {exists: false};
+                    const payload = Object.assign({}, item);
+                    if (desc !== null) payload.description = desc;
+                    if (mes !== null) payload.first_mes = mes;
+                    payload.name = name;
+                    payload.avatar_url = item.avatar;
+                    const r = await fetch('/api/characters/edit', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+                    return {exists: true, ok: r.ok};
+                }""",
+                [name, new_desc, new_mes]
+            )
+            if isinstance(result, dict) and result.get("exists") and result.get("ok"):
+                await self.page.reload(wait_until="domcontentloaded")
+                await self.page.wait_for_selector(".welcomeHeaderVersionDisplay", timeout=60000)
+                await self.get_all_chats()
+            return result
+        except Exception as e:
+            logger.error(f"更新角色卡失败：{e}")
+            return None
+
     async def open_browser_auto(self, first : bool):
         """低内存占用模式判断开启"""
         if self.config['tavern']['low_memory_mode']: # 判断并且打开浏览器
@@ -1810,7 +1847,7 @@ class bartender_crawler(Star):
     @filter.command("酒加卡")
     @_access_required
     async def upload_chat_command(self, event: AstrMessageEvent):
-        """添加角色卡至酒馆：附带PNG图片上传，或文字建卡 /酒加卡 名字 [角色描述] [开场白]"""
+        """添加或更新角色卡：附带PNG图片上传，或文字建卡/更新已有卡 /酒加卡 名字 [角色描述] [开场白]"""
         if self.status_running: # 判断运行状态
             self.status_running = False
             try:
@@ -1822,12 +1859,32 @@ class bartender_crawler(Star):
 {chats}""")
                     return
                 rest = re.sub(r"^酒加卡\s*", "", event.message_str.strip())
-                if rest: # 情况 B：文字建卡 /酒加卡 名字 [角色描述] [开场白]
+                if rest: # 情况 B：文字建卡或更新已有卡 /酒加卡 名字 [角色描述] [开场白]，[/]=不改 []=清空 省略=不改
                     name, segs = _split_bracket_args(rest)
-                    if not name or not segs or not segs[0]:
-                        yield event.plain_result("""请输入：/酒加卡 名字 [角色描述] [开场白]（描述与开场白用中括号包裹，防止空格换行导致错误；开场白可省略）""")
+                    if not name or not segs:
+                        yield event.plain_result("""请输入：/酒加卡 名字 [角色描述] [开场白]（描述与开场白用中括号包裹，可含空格换行；[/]=不改 []=清空 省略=不改；开场白可省略）""")
                         return
-                    card_path = _build_card_png(name, segs[0], segs[1] if len(segs) > 1 else "")
+                    desc = _norm_field(segs[0])
+                    mes = _norm_field(segs[1]) if len(segs) > 1 else None
+                    await bartender_crawler.open_browser_auto(self, False)
+                    try:
+                        result = await bartender_crawler.edit_card_fields(self, name, desc, mes)
+                    finally:
+                        await bartender_crawler.close_browser_auto(self)
+                    if result is None: # 异常时中止，防止误走建卡流程产生重复卡片
+                        yield event.plain_result("""更新角色卡检查异常，已中止操作，请稍后重试""")
+                        return
+                    if result.get("exists"): # 已有同名卡：更新流程
+                        chats = '\n'.join(self.chats_name_id.keys())
+                        if result.get("ok"):
+                            yield event.plain_result(f"""已更新角色卡「{name}」
+角色列表：
+{chats}""")
+                        else:
+                            yield event.plain_result(f"""更新角色卡「{name}」失败，请稍后重试""")
+                        return
+                    # 不存在同名卡：回落到文字建卡流程（[/]/省略视为空内容）
+                    card_path = _build_card_png(name, "" if desc is None else desc, "" if mes is None else mes)
                     try:
                         await bartender_crawler.up_chat_png(self, card_path)
                         chats = '\n'.join(self.chats_name_id.keys())
