@@ -7,6 +7,7 @@ let lastInfo = null;
 let lastError = null;
 let installPollTimer = null;
 let lastActionBtn = null;
+const _cacheBust = Date.now();
 
 // 语言同步：bridge 的 applyContext 已自动处理 data-theme，这里只补 lang 属性
 function applyLang() {
@@ -85,7 +86,8 @@ function showFrame() {
     return;
   }
   const f = $("frame");
-  if (f.src !== stUrl) f.src = stUrl;
+  const framedUrl = stUrl + '?_=' + _cacheBust;
+  if (f.src !== framedUrl) f.src = framedUrl;
   f.classList.remove("hidden");
   $("fallback").classList.add("hidden");
 }
