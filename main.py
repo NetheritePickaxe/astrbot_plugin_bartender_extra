@@ -22,10 +22,73 @@ PLUGIN_NAME = "astrbot_plugin_bartender_extra"
 # 引用定位兼容楼层前缀
 _FLOOR_PREFIX_RE = re.compile(r"^当前共\d+楼层$")
 
+# 括号参数提取：匹配 [内容]，内容可含空格与换行（不含嵌套方括号）
+_BRACKET_ARG_RE = re.compile(r"\[([^\[\]]*)\]")
+
+
+def _split_bracket_args(text):
+    """从文本提取括号片段：返回（首个左括号前的文本strip后的名字, 片段列表）"""
+    m = _BRACKET_ARG_RE.search(text)
+    if not m:
+        return text.strip(), []
+    head = text[:m.start()].strip()
+    segs = [s.strip() for s in _BRACKET_ARG_RE.findall(text)]
+    return head, segs
+
+
+def _build_card_png(name, description, first_mes):
+    """纯 Python 生成最小 V2 角色卡 PNG（1x1 像素 + tEXt chara 块），返回本地文件路径"""
+    import base64
+    import struct
+    import zlib
+
+    card = {
+        "spec": "chara_card_v2",
+        "spec_version": "2.0",
+        "data": {
+            "name": name,
+            "description": description,
+            "personality": "",
+            "scenario": "",
+            "first_mes": first_mes,
+            "mes_example": "",
+            "creator_notes": "",
+            "system_prompt": "",
+            "post_history_instructions": "",
+            "alternate_greetings": [],
+            "tags": [],
+            "creator": "",
+            "character_version": "",
+            "extensions": {},
+        },
+    }
+    payload = base64.b64encode(json.dumps(card, ensure_ascii=False).encode("utf-8"))
+
+    def chunk(tag, data):
+        return (
+            struct.pack(">I", len(data)) + tag + data
+            + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        )
+
+    ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0) # 1x1 像素、8bit、RGB
+    idat = zlib.compress(b"\x00\xff\xff\xff") # filter 0 + 单像素白色
+    png = b"\x89PNG\r\n\x1a\n"
+    png += chunk(b"IHDR", ihdr)
+    png += chunk(b"tEXt", b"chara\x00" + payload) # SillyTavern 标准角色卡嵌入格式
+    png += chunk(b"IDAT", idat)
+    png += chunk(b"IEND", b"")
+
+    save_dir = Path("data/temp/astrbot_plugin_bartender_extra")
+    save_dir.mkdir(parents=True, exist_ok=True)
+    save_path = save_dir / f"textcard_{int(time.time() * 1000)}.png"
+    save_path.write_bytes(png)
+    return save_path
+
+
 # 聊天模式下放行的本插件指令名集合（首词命中则不拦截，交给指令分发）
 CHAT_MODE_COMMANDS = frozenset({
     "酒", "酒切换", "酒删除", "酒加卡", "酒删卡", "酒重生成", "酒续写", "酒备选",
-    "酒停止生成", "酒关闭", "酒新建", "酒导出", "酒统计", "酒改名", "酒查看",
+    "酒中断", "酒停止", "酒新建", "酒导出", "酒统计", "酒查看",
     "酒人设", "酒状态", "酒帮助", "酒启动", "酒重置",
     "酒进程", "酒开始", "酒结束", "酒权限", "酒世界书",
 })
@@ -964,37 +1027,6 @@ class bartender_crawler(Star):
             logger.error(f"导出聊天记录失败：{e}")
             return None
 
-    async def rename_character(self, old_name, new_name):
-        """通过页面上下文调用酒馆 REST 重命名角色卡，返回 (是否成功, 提示)"""
-        try:
-            if not await self.check_browser():
-                return False, "浏览器未连接"
-            result = await self.page.evaluate(
-                """async (args) => {
-                    const list = await fetch('/api/characters/all', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}).then(r => r.ok ? r.json() : []);
-                    const item = (Array.isArray(list) ? list : []).find(c => c.name === args.old);
-                    if (!item) return {ok: false, code: 'not_found'};
-                    const r = await fetch('/api/characters/rename', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({avatar_url: item.avatar, new_name: args.new})});
-                    if (!r.ok) return {ok: false, code: 'request_failed'};
-                    return {ok: true};
-                }""",
-                {"old": old_name, "new": new_name},
-            )
-            if not result or not result.get("ok"):
-                code = (result or {}).get("code") or "error"
-                return False, "重命名请求失败" if code == "request_failed" else "未找到角色卡" if code == "not_found" else "错误"
-            # REST 改名后前端 DOM 角色列表已过期，重载页面以同步
-            try:
-                await self.page.reload(wait_until="domcontentloaded")
-                await self.page.wait_for_selector(".welcomeHeaderVersionDisplay", state="visible", timeout=10000)
-            except Exception as e:
-                logger.warning(f"改名后重载页面失败：{e}")
-            await self.get_all_chats() # 重新获取角色列表
-            return True, "正常"
-        except Exception as e:
-            logger.error(f"重命名角色卡失败：{e}")
-            return False, "错误"
-
     async def open_browser_auto(self, first : bool):
         """低内存占用模式判断开启"""
         if self.config['tavern']['low_memory_mode']: # 判断并且打开浏览器
@@ -1428,12 +1460,14 @@ class bartender_crawler(Star):
     #     yield event.plain_result(f"喵~这是测试指令的回复")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
-    @filter.command("酒关闭")
-    async def command_close_browser(self, event: AstrMessageEvent):
-        """关闭插件浏览器并清理后台所有 chrome/chromium 进程"""
-        await bartender_crawler.close_browser(self) # 先优雅关闭插件自己的浏览器
-        await bartender_crawler.kill_chrome_process(self) # 再兜底清理残留进程
-        yield event.plain_result("""已关闭浏览器并清理所有后台 Chrome/Chromium 进程""")
+    @filter.command("酒停止")
+    async def command_stop_all(self, event: AstrMessageEvent):
+        """完全关闭：停止酒馆主程序(node 进程)、插件浏览器，并清理后台所有 chrome/chromium 进程"""
+        st_ok, st_msg = await self.stop_tavern() # 先停酒馆主程序（node server.js）
+        await bartender_crawler.close_browser(self) # 再优雅关闭插件自己的浏览器
+        await bartender_crawler.kill_chrome_process(self) # 兜底清理残留进程
+        yield event.plain_result(f"""酒馆主程序：{st_msg}
+已关闭浏览器并清理所有后台 Chrome/Chromium 进程""")
 
     @filter.command("酒")
     @_access_required
@@ -1527,12 +1561,13 @@ class bartender_crawler(Star):
                         finally:
                             await bartender_crawler.close_persona_panel(self)
                         return
-                    if tokens[1] == "修改": # /酒人设 修改 [名字] [内容]：仅名字删除，不存在则新建
-                        if len(tokens) < 3:
-                            yield event.plain_result("""请输入：/酒人设 修改 [名字] [内容]（仅名字则删除该人设）""")
+                    if tokens[1] == "修改": # /酒人设 修改 名字 [内容]：仅名字删除，不存在则新建；内容用[]包裹可含空格换行
+                        rest = re.sub(r"^酒人设\s+修改\s*", "", user_message)
+                        persona_name, segs = _split_bracket_args(rest)
+                        if not persona_name:
+                            yield event.plain_result("""请输入：/酒人设 修改 名字 [内容]（内容用中括号包裹，防止空格换行导致错误；仅名字则删除该人设）""")
                             return
-                        persona_name = tokens[2]
-                        description = " ".join(tokens[3:]).strip()
+                        description = "\n".join(segs) if segs else ""
                         await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息
                         personas, _ = await bartender_crawler.get_personas(self) # 判断人设是否存在
                         exists = bool(personas is not None and persona_name in personas)
@@ -1775,20 +1810,38 @@ class bartender_crawler(Star):
     @filter.command("酒加卡")
     @_access_required
     async def upload_chat_command(self, event: AstrMessageEvent):
-        """添加角色卡至酒馆"""
+        """添加角色卡至酒馆：附带PNG图片上传，或文字建卡 /酒加卡 名字 [角色描述] [开场白]"""
         if self.status_running: # 判断运行状态
             self.status_running = False
             try:
                 image_comp = bartender_crawler.find_card_comp(self, event)
-                if image_comp: # 同条消息附带图片或引用了含图消息，直接进入处理流程
+                if image_comp: # 情况 A：同条消息附带图片或引用了含图消息，直接进入处理流程
                     await bartender_crawler.process_image(self, image_comp) # process_image无返回值，无需yield
                     chats = '\n'.join(self.chats_name_id.keys())
                     yield event.plain_result(f"""角色列表：
 {chats}""")
-                else: # 情况 B：指令和图片分条发送。为该用户开启等待状态，设定有效期
-                    session_key = f"{event.get_group_id()}_{event.get_sender_id()}"
-                    self.waiting_sessions[session_key] = time.time() + int(self.config['tavern']['upload_interval'])
-                    yield event.plain_result(f"""请在{self.config['tavern']['upload_interval']}秒内发送角色卡""")
+                    return
+                rest = re.sub(r"^酒加卡\s*", "", event.message_str.strip())
+                if rest: # 情况 B：文字建卡 /酒加卡 名字 [角色描述] [开场白]
+                    name, segs = _split_bracket_args(rest)
+                    if not name or not segs or not segs[0]:
+                        yield event.plain_result("""请输入：/酒加卡 名字 [角色描述] [开场白]（描述与开场白用中括号包裹，防止空格换行导致错误；开场白可省略）""")
+                        return
+                    card_path = _build_card_png(name, segs[0], segs[1] if len(segs) > 1 else "")
+                    try:
+                        await bartender_crawler.up_chat_png(self, card_path)
+                        chats = '\n'.join(self.chats_name_id.keys())
+                        yield event.plain_result(f"""已创建角色卡「{name}」
+角色列表：
+{chats}""")
+                    finally:
+                        if card_path.exists():
+                            card_path.unlink()
+                    return
+                # 情况 C：指令和图片分条发送。为该用户开启等待状态，设定有效期
+                session_key = f"{event.get_group_id()}_{event.get_sender_id()}"
+                self.waiting_sessions[session_key] = time.time() + int(self.config['tavern']['upload_interval'])
+                yield event.plain_result(f"""请在{self.config['tavern']['upload_interval']}秒内发送角色卡""")
             except Exception as e:
                 logger.error(f"酒加卡指令异常: {e}")
                 yield event.plain_result("""指令执行异常，请稍后重试""")
@@ -1864,7 +1917,13 @@ class bartender_crawler(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("酒进程")
     async def chrome_status_command(self, event: AstrMessageEvent):
-        """查看后台 chrome/chromium 进程数量与插件浏览器状态"""
+        """查看后台 chrome/chromium 进程数量与插件浏览器状态；子命令 停止 仅关闭浏览器进程"""
+        tokens = event.message_str.strip().split()
+        if len(tokens) > 1 and tokens[1] == "停止": # /酒进程 停止：仅关闭浏览器并清理残留进程（不动酒馆主程序）
+            await bartender_crawler.close_browser(self)
+            await bartender_crawler.kill_chrome_process(self)
+            yield event.plain_result("""已关闭浏览器并清理所有后台 Chrome/Chromium 进程""")
+            return
         total, detail = bartender_crawler.count_chrome_processes(self)
         if self.browser and self.browser.is_connected():
             browser_state = """已连接"""
@@ -1958,7 +2017,7 @@ class bartender_crawler(Star):
         else:
             yield event.plain_result("""正在Shake~，请稍作等待""")
 
-    @filter.command("酒停止生成")
+    @filter.command("酒中断")
     @_access_required
     async def command_stop_generation(self, event: AstrMessageEvent):
         """中断当前酒馆生成"""
@@ -1969,7 +2028,7 @@ class bartender_crawler(Star):
                 result = await bartender_crawler.stop_generation(self)
                 yield event.plain_result(result)
             except Exception as e:
-                logger.error(f"酒停止指令异常: {e}")
+                logger.error(f"酒中断指令异常: {e}")
                 yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
@@ -2079,44 +2138,6 @@ class bartender_crawler(Star):
                 yield event.plain_result("\n".join(lines))
             except Exception as e:
                 logger.error(f"酒统计指令异常: {e}")
-                yield event.plain_result("""指令执行异常，请稍后重试""")
-            finally:
-                await bartender_crawler.close_browser_auto(self)
-                self.status_running = True
-        else:
-            yield event.plain_result("""正在Shake~，请稍作等待""")
-
-    @filter.command("酒改名")
-    @_access_required
-    async def command_rename_character(self, event: AstrMessageEvent):
-        """重命名角色卡：/酒改名 旧名 新名"""
-        if self.status_running:
-            self.status_running = False
-            try:
-                await bartender_crawler.open_browser_auto(self, False)
-                user_message = event.message_str.strip()
-                tokens = user_message.split()
-                if len(tokens) < 3:
-                    yield event.plain_result("""请输入：/酒改名 旧名 新名""")
-                    return
-                old_name = tokens[1]
-                new_name = " ".join(tokens[2:])
-                if old_name == "Seraphina":
-                    yield event.plain_result("""禁止修改默认角色名""")
-                    return
-                ok, msg = await bartender_crawler.rename_character(self, old_name, new_name)
-                if not ok:
-                    yield event.plain_result(f"""改名失败: {(msg)}""")
-                    return
-                if self.config['basic']['now_chats_name'] == old_name: # 若改名的是当前角色，同步配置
-                    self.config['basic']['now_chats_name'] = new_name
-                    self.config.save_config()
-                chats = '\n'.join(self.chats_name_id.keys())
-                yield event.plain_result(f"""已将「{old_name}」重命名为「{new_name}」
-当前角色列表：
-{chats}""")
-            except Exception as e:
-                logger.error(f"酒改名指令异常: {e}")
                 yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
