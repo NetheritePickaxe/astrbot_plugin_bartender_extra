@@ -1,5 +1,12 @@
 # 更新日志
 
+## [v1.6.7] — 2026-08-24
+
+### 修复
+- 修复「安装酒馆」报「依赖未安装」的问题：v1.6.6 把相对路径 `self.st_dir` 传给 `download_sillytavern.py` 作为 `TARGET_DIR`，脚本以自身 cwd（持久父目录）为基准解析，导致 `os.rename` 目标嵌套为 `data/.../data/.../SillyTavern`、父目录不存在而失败（WinError 3）。现 `self.st_dir` 在 `__init__` 即 `.resolve()` 为绝对路径，脚本拿到绝对 `TARGET_DIR`，`os.rename` 与 `npm install` 的 cwd 均正确，安装全自动跑通
+
+---
+
 ## [v1.6.6] — 2026-08-24
 
 ### 变更

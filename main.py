@@ -120,7 +120,7 @@ os.environ["PWDEBUG"] = "0"
 @register(PLUGIN_NAME,
            "dragonuniverse8248编写 GML5.2 & deepseek指导",
               "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
-                "1.6.6")
+                "1.6.7")
 
 
 
@@ -143,7 +143,7 @@ class bartender_crawler(Star):
         self.chat_mode_user_keys = set() # 活跃的按用户聊天模式键 "{群号}_{用户ID}"
         self.chat_mode_group_keys = {} # 活跃的按群聊天模式键 "{群号}" -> 创建者键
         self.plugin_dir = Path(__file__).parent # 获取当前目录
-        self.st_dir = Path("data") / self.plugin_dir.name / "SillyTavern" # 持久数据目录（插件更新不丢失）
+        self.st_dir = (Path("data") / self.plugin_dir.name / "SillyTavern").resolve() # 持久数据目录（插件更新不丢失）
         self._migrate_legacy_st()
         self.persona_bindings = self._load_persona_bindings() # 用户人设绑定字典，格式为: {"群号_用户ID": {"name": 人设名, "avatar_id": 人设头像ID}}
         self._st_install_status = None # 酒馆安装状态：None | "downloading" | "extracting" | "installing_deps" | "done" | "failed: <msg>"
