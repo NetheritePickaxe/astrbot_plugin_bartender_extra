@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 browser/
 browser.zip
+SillyTavern/
 
 # C extensions
 *.so

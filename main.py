@@ -120,7 +120,7 @@ os.environ["PWDEBUG"] = "0"
 @register(PLUGIN_NAME,
            "dragonuniverse8248编写 GML5.2 & deepseek指导",
               "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
-                "1.6.5")
+                "1.6.6")
 
 
 
@@ -143,6 +143,8 @@ class bartender_crawler(Star):
         self.chat_mode_user_keys = set() # 活跃的按用户聊天模式键 "{群号}_{用户ID}"
         self.chat_mode_group_keys = {} # 活跃的按群聊天模式键 "{群号}" -> 创建者键
         self.plugin_dir = Path(__file__).parent # 获取当前目录
+        self.st_dir = Path("data") / self.plugin_dir.name / "SillyTavern" # 持久数据目录（插件更新不丢失）
+        self._migrate_legacy_st()
         self.persona_bindings = self._load_persona_bindings() # 用户人设绑定字典，格式为: {"群号_用户ID": {"name": 人设名, "avatar_id": 人设头像ID}}
         self._st_install_status = None # 酒馆安装状态：None | "downloading" | "extracting" | "installing_deps" | "done" | "failed: <msg>"
         self._register_web_apis(context)
@@ -211,7 +213,7 @@ class bartender_crawler(Star):
             reachable = True
         except Exception:
             reachable = False
-        has_bundled = (self.plugin_dir / "SillyTavern" / "server.js").exists()
+        has_bundled = (self.st_dir / "server.js").exists()
         return json_response({
             "st_url": st_url,
             "ip": self.config['tavern']['browser_ip'],
@@ -237,7 +239,7 @@ class bartender_crawler(Star):
 
     async def install_tavern(self):
         """启动酒馆安装流程（后台 subprocess 调用 download_sillytavern.py）"""
-        st_dir = self.plugin_dir / "SillyTavern"
+        st_dir = self.st_dir
         if (st_dir / "server.js").exists():
             return False, """酒馆已安装"""
         node_path = shutil.which("node")
@@ -257,8 +259,9 @@ class bartender_crawler(Star):
                 except Exception:
                     pass
             self._st_install_log = open(log_path, "w", encoding="utf-8")
+            self.st_dir.parent.mkdir(parents=True, exist_ok=True)
             popen_kwargs = {
-                "cwd": str(self.plugin_dir),
+                "cwd": str(self.st_dir.parent),
                 "stdin": subprocess.PIPE,
                 "stdout": self._st_install_log,
                 "stderr": subprocess.STDOUT,
@@ -268,7 +271,7 @@ class bartender_crawler(Star):
             else:
                 popen_kwargs["start_new_session"] = True
             proc = subprocess.Popen(
-                [sys.executable, str(script)],
+                [sys.executable, str(script), str(self.st_dir)],
                 **popen_kwargs,
             )
             try:
@@ -286,7 +289,7 @@ class bartender_crawler(Star):
                 await asyncio.sleep(2)
             self._update_install_status_from_log()
             rc = proc.returncode
-            st_dir = self.plugin_dir / "SillyTavern"
+            st_dir = self.st_dir
             if rc == 0:
                 if (st_dir / "node_modules").exists():
                     self._st_install_status = "done"
@@ -1062,7 +1065,7 @@ class bartender_crawler(Star):
 
     async def backup_tavern_data(self):
         """打包内置酒馆 data 目录为 zip；返回 (zip路径或None, 提示消息)"""
-        st_dir = self.plugin_dir / "SillyTavern"
+        st_dir = self.st_dir
         st_data = st_dir / "data"
         if not (st_dir / "server.js").exists() or not st_data.exists():
             return None, """仅支持插件内置安装的 SillyTavern，未找到内置酒馆数据目录"""
@@ -1385,6 +1388,17 @@ class bartender_crawler(Star):
             return -1, [f"""统计失败: {e}"""]
         return total, detail
 
+    def _migrate_legacy_st(self):
+        """把旧位置 plugin_dir/SillyTavern 迁移到持久位置 self.st_dir（仅当持久位置不存在且旧位置存在时）"""
+        legacy = self.plugin_dir / "SillyTavern"
+        try:
+            if not self.st_dir.exists() and legacy.exists():
+                self.st_dir.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(legacy), str(self.st_dir))
+                logger.info(f"已将酒馆迁移到持久数据目录: {self.st_dir}")
+        except Exception as e:
+            logger.warning(f"迁移旧版酒馆目录失败: {e}")
+
     async def _ensure_npm_install(self, st_dir):
         """node_modules 缺失时自动执行 npm install（线程池执行，不阻塞事件循环）"""
         npm_path = shutil.which("npm")
@@ -1446,7 +1460,7 @@ class bartender_crawler(Star):
         except Exception:
             pass
         # 定位目录
-        st_dir = self.plugin_dir / "SillyTavern"
+        st_dir = self.st_dir
         if not (st_dir / "server.js").exists():
             return False, """未在插件目录找到 SillyTavern，请先运行 download_sillytavern 脚本下载"""
         # Node 检查

@@ -21,7 +21,7 @@ import urllib.error
 URL = "https://github.com/SillyTavern/SillyTavern/archive/refs/heads/release.zip"
 ZIPFILE = "st-release.zip"
 EXTRACTED_DIR = "SillyTavern-release"
-TARGET_DIR = "SillyTavern"
+TARGET_DIR = sys.argv[1] if len(sys.argv) > 1 else "SillyTavern"
 BACKUP_DIR = "st_data_backup"
 CONFIG_BAK = "config.yaml.bak"
 

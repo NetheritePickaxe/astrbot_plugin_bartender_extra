@@ -1,5 +1,20 @@
 # 更新日志
 
+## [v1.6.6] — 2026-08-24
+
+### 变更
+- SillyTavern 安装位置由插件目录（`plugin_dir/SillyTavern`）迁至持久数据目录 `data/<插件名>/SillyTavern`（AstrBot 全局 data 下，与 plugins 同级），插件更新不再删除内置酒馆及其角色/聊天/配置数据
+- `__init__` 新增 `self.st_dir` 持久路径，并调用 `_migrate_legacy_st` 自动迁移旧位置（一次性安全网）
+- `_install_tavern_bg` 下载/解压/安装均在持久位置进行（subprocess 传入持久绝对路径，cwd 设为持久父目录）
+- `download_sillytavern.py` 支持命令行参数指定安装目录：`TARGET_DIR = argv[1] or "SillyTavern"`
+- `.gitignore` 补 `SillyTavern/`
+
+### 升级须知
+- 更新到 v1.6.6 前，建议先手动搬一次：把 `data/plugins/astrbot_plugin_bartender_extra/SillyTavern` 移到 `data/astrbot_plugin_bartender_extra/SillyTavern`，避免更新清空插件目录时数据丢失
+- 若 AstrBot 更新保留了未跟踪文件，新版 `__init__` 会自动迁移，无需手动操作
+
+---
+
 ## [v1.6.5] — 2026-08-24
 
 ### 修复
