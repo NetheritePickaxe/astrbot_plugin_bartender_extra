@@ -7,9 +7,7 @@ let lastInfo = null;
 let lastError = null;
 let installPollTimer = null;
 let lastActionBtn = null;
-const _cacheBust = Date.now();
 
-// 语言同步：bridge 的 applyContext 已自动处理 data-theme，这里只补 lang 属性
 function applyLang() {
   try {
     const ctx = bridge.getContext();
@@ -17,33 +15,18 @@ function applyLang() {
   } catch {}
 }
 
-function isMixedContent() {
-  try {
-    return (
-      window.location.protocol === "https:" &&
-      new URL(stUrl).protocol === "http:"
-    );
-  } catch {
-    return false;
-  }
-}
-
 function setStatus(text, kind) {
   $("status-text").textContent = text;
   $("dot").className = "dot " + (kind || "unknown");
 }
 
-const KNOWN_ACTIONS = ["start", "install", "stop-wrap", "ext-tag"];
+const KNOWN_ACTIONS = ["start", "install", "stop-wrap", "stop-all", "ext-tag"];
 
 function revealAction(id) {
   hideActions();
   if (id === "stop-wrap") {
     const w = $("stop-wrap");
     if (w) w.classList.remove("hidden");
-    const main = $("stop-btn");
-    if (main) { main.disabled = false; main.textContent = "关闭酒馆"; }
-    const caret = $("stop-menu-btn");
-    if (caret) caret.disabled = false;
   } else {
     const el = $(id);
     if (el) el.classList.remove("hidden");
@@ -63,48 +46,26 @@ function hideActions() {
 
 function setActionLoading(on, text) {
   if (!lastActionBtn) return;
-  if (lastActionBtn === "stop-wrap") {
-    const main = $("stop-btn");
-    const caret = $("stop-menu-btn");
-    if (main) {
-      main.disabled = !!on;
-      if (text !== undefined) main.textContent = on ? text : "关闭酒馆";
-    }
-    if (caret) caret.disabled = !!on;
-    if (on) $("stop-menu").classList.add("hidden");
-  } else {
-    const el = $(lastActionBtn);
-    if (!el) return;
-    el.disabled = !!on;
-    if (text !== undefined) el.textContent = text;
-  }
+  const el = $(lastActionBtn);
+  if (!el) return;
+  el.disabled = !!on;
+  if (text !== undefined) el.textContent = text;
 }
 
-function showFrame() {
-  if (!stUrl || isMixedContent()) {
-    showFallback();
-    return;
-  }
-  const f = $("frame");
-  const framedUrl = stUrl + '?_=' + _cacheBust;
-  if (f.src !== framedUrl) f.src = framedUrl;
-  f.classList.remove("hidden");
-  $("fallback").classList.add("hidden");
+function showMessage(text, kind) {
+  const m = $("message");
+  m.textContent = text;
+  m.className = "message-area " + (kind || "info");
+  m.classList.remove("hidden");
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => {
+    m.classList.add("hidden");
+  }, 5000);
 }
 
-function showFallback(title, desc) {
-  $("frame").classList.add("hidden");
-  $("frame").removeAttribute("src");
-  if (title) $("fallback-title").textContent = title;
-  if (desc) $("fallback-desc").textContent = desc;
-  $("fallback").classList.remove("hidden");
-}
-
-// 按最近一次探测结果渲染状态区（语言切换后按当前语言重绘）
 function applyStatus(info) {
   stUrl = info.st_url || "";
   $("addr").textContent = stUrl || "—";
-  // 安装进行中/刚完成 → 优先展示安装状态，隐藏操作按钮
   if (info.install_status) {
     applyInstallStatus(info.install_status);
     return;
@@ -116,14 +77,7 @@ function applyStatus(info) {
     } else {
       revealAction("ext-tag");
     }
-    if (isMixedContent()) {
-      showFallback(
-        "混合内容被拦截",
-        "面板为 HTTPS 而酒馆为 HTTP，浏览器禁止内嵌。请复制地址在新标签页打开，或将面板改用 HTTP 访问。"
-      );
-    } else {
-      showFrame();
-    }
+    revealAction("ext-tag");
   } else {
     setStatus("酒馆未连接", "offline");
     if (info.has_bundled_st) {
@@ -131,42 +85,33 @@ function applyStatus(info) {
     } else {
       revealAction("install");
     }
-    showFallback(
-      "酒馆未连接",
-      "未检测到酒馆服务运行。" +
-        (info.has_bundled_st
-          ? "可点击右上「启动酒馆」一键拉起插件目录中的酒馆。"
-          : "未检测到酒馆，点击「安装酒馆」一键下载并安装。")
-    );
   }
 }
 
-// 安装状态渲染：进行中显示进度，完成/失败显示结果并停轮询
 function applyInstallStatus(status) {
   hideActions();
   if (status === "downloading" || status === "starting") {
     setStatus("安装中…", "unknown");
-    showFallback("安装中…", "正在下载酒馆…");
+    showMessage("正在下载酒馆…", "info");
   } else if (status === "extracting") {
     setStatus("安装中…", "unknown");
-    showFallback("安装中…", "正在解压…");
+    showMessage("正在解压…", "info");
   } else if (status === "installing_deps") {
     setStatus("安装中…", "unknown");
-    showFallback("安装中…", "正在安装依赖(可能需要数分钟)…");
+    showMessage("正在安装依赖(可能需要数分钟)…", "info");
   } else if (status === "done") {
     stopInstallPolling();
     setStatus("安装完成", "online");
-    showFallback("安装完成", "SillyTavern 已安装，可点击「启动酒馆」启动。");
+    showMessage("SillyTavern 已安装，可点击「启动酒馆」启动。", "success");
     revealAction("start");
   } else if (typeof status === "string" && status.startsWith("failed")) {
     stopInstallPolling();
     setStatus("安装失败", "offline");
-    showFallback("安装失败", status);
+    showMessage(status, "error");
     revealAction("install");
   }
 }
 
-// 安装轮询：每 2 秒拉取一次 info 读取安装状态
 async function pollInstall() {
   if (installPollTimer) return;
   installPollTimer = setInterval(async () => {
@@ -174,7 +119,6 @@ async function pollInstall() {
       const info = await bridge.apiGet("info");
       lastInfo = info;
       if (!info.install_status) {
-        // 后台已清空状态 → 回到正常流程
         stopInstallPolling();
         applyStatus(info);
         return;
@@ -184,7 +128,7 @@ async function pollInstall() {
       stopInstallPolling();
       lastError = e.message || "请稍后重试。";
       setStatus("状态获取失败", "offline");
-      showFallback("状态获取失败", lastError);
+      showMessage(lastError, "error");
     }
   }, 2000);
 }
@@ -208,89 +152,124 @@ async function refreshStatus() {
   } catch (e) {
     lastError = e.message || "请稍后重试。";
     setStatus("状态获取失败", "offline");
-    showFallback("状态获取失败", lastError);
+    showMessage(lastError, "error");
   }
 }
 
 async function startTavern() {
-  const btn = $("start");
-  btn.disabled = true;
-  btn.textContent = "启动中…";
+  setActionLoading(true, "启动中…");
   try {
     const r = await bridge.apiPost("tavern/start", {});
     if (r && r.ok) {
+      showMessage("酒馆已启动", "success");
       await refreshStatus();
     } else {
-      alert((r && r.message) || "启动失败");
+      showMessage((r && r.message) || "启动失败", "error");
     }
   } catch (e) {
-    alert(e.message || "启动失败");
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "启动酒馆";
+    showMessage(e.message || "启动失败", "error");
+  }
+  if (lastActionBtn) {
+    const el = $(lastActionBtn);
+    if (el) { el.disabled = false; el.textContent = "启动酒馆"; }
   }
 }
 
 async function installTavern() {
-  const btn = $("install");
-  btn.disabled = true;
-  btn.textContent = "安装中…";
+  setActionLoading(true, "安装中…");
   try {
     const r = await bridge.apiPost("tavern/install", {});
     if (r && r.ok) {
-      btn.textContent = "安装中…";
+      showMessage("安装中…", "info");
       await refreshStatus();
       pollInstall();
     } else {
-      alert((r && r.message) || "安装失败");
-      btn.textContent = "安装酒馆";
+      showMessage((r && r.message) || "安装失败", "error");
     }
   } catch (e) {
-    alert(e.message || "安装失败");
-  } finally {
-    btn.disabled = false;
+    showMessage(e.message || "安装失败", "error");
+  }
+  if (lastActionBtn) {
+    const el = $(lastActionBtn);
+    if (el) { el.disabled = false; el.textContent = "安装酒馆"; }
   }
 }
 
 async function stopTavern() {
   hideMenu();
-  const btn = $("stop-btn");
-  btn.disabled = true;
-  btn.textContent = "关闭中…";
+  setActionLoading(true, "关闭中…");
   try {
     const r = await bridge.apiPost("tavern/stop", {});
     if (r && r.ok) {
+      showMessage("酒馆已关闭", "success");
       await refreshStatus();
     } else {
-      alert((r && r.message) || "关闭失败");
-      btn.disabled = false;
-      btn.textContent = "关闭酒馆";
+      showMessage((r && r.message) || "关闭失败", "error");
     }
   } catch (e) {
-    alert(e.message || "关闭失败");
-    btn.disabled = false;
-    btn.textContent = "关闭酒馆";
+    showMessage(e.message || "关闭失败", "error");
+  }
+  if (lastActionBtn === "stop-wrap") {
+    const main = $("stop-btn");
+    if (main) { main.disabled = false; main.textContent = "关闭酒馆"; }
   }
 }
 
 async function restartTavern() {
   hideMenu();
-  const btn = $("stop-btn");
-  btn.disabled = true;
-  btn.textContent = "重启中…";
+  setActionLoading(true, "重启中…");
   try {
     const r = await bridge.apiPost("tavern/restart", {});
     if (r && r.ok) {
+      showMessage("酒馆已重启", "success");
       await refreshStatus();
     } else {
-      alert((r && r.message) || "重启失败");
-      btn.disabled = false;
-      btn.textContent = "关闭酒馆";
+      showMessage((r && r.message) || "重启失败", "error");
     }
   } catch (e) {
-    alert(e.message || "重启失败");
+    showMessage(e.message || "重启失败", "error");
+  }
+  if (lastActionBtn === "stop-wrap") {
+    const main = $("stop-btn");
+    if (main) { main.disabled = false; main.textContent = "关闭酒馆"; }
+  }
+}
+
+async function stopAll() {
+  setActionLoading(true, "关闭中…");
+  try {
+    const r = await bridge.apiPost("tavern/stop", {});
+    if (r && r.ok) {
+      showMessage("酒馆已关闭，浏览器已清理", "success");
+      await refreshStatus();
+    } else {
+      showMessage((r && r.message) || "关闭失败", "error");
+    }
+  } catch (e) {
+    showMessage(e.message || "关闭失败", "error");
+  }
+  if (lastActionBtn) {
+    const el = $(lastActionBtn);
+    if (el) { el.disabled = false; el.textContent = "关闭全部"; }
+  }
+}
+
+async function exportData() {
+  const btn = $("export-data");
+  btn.disabled = true;
+  btn.textContent = "打包中…";
+  try {
+    const r = await bridge.apiPost("tavern/export-data", {});
+    if (r && r.ok) {
+      showMessage("导出完成", "success");
+    } else {
+      showMessage((r && r.message) || "导出失败", "error");
+    }
+  } catch (e) {
+    showMessage(e.message || "导出失败", "error");
+  } finally {
     btn.disabled = false;
-    btn.textContent = "关闭酒馆";
+    btn.textContent = "导出整库备份";
   }
 }
 
@@ -317,9 +296,7 @@ async function copyAddr() {
     await navigator.clipboard.writeText(stUrl);
     flash("已复制");
     return;
-  } catch {
-    // 落地兜底
-  }
+  } catch {}
   const range = document.createRange();
   range.selectNode($("addr"));
   const sel = window.getSelection();
@@ -357,15 +334,15 @@ function bind() {
       if (stUrl) window.open(stUrl, "_blank", "noopener");
     });
   }
+  if ($("export-data")) {
+    $("export-data").addEventListener("click", exportData);
+  }
 }
 
 await bridge.ready();
-
-// 语言同步（bridge 已自动处理 data-theme 主题跟随）
 applyLang();
 bridge.onContext(applyLang);
 
-// 恢复上次 session 的操作按钮（F5 重载时避免按钮直接消失）
 try {
   const restored = localStorage.getItem("st_action_btn");
   if (restored && KNOWN_ACTIONS.includes(restored)) revealAction(restored);

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>酒馆界面</title>
+    <title>酒馆控制面板</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
@@ -17,27 +17,40 @@
         <button id="copy" class="btn ghost" type="button" title="复制地址">复制</button>
       </div>
       <button id="refresh" class="btn" type="button">刷新状态</button>
-      <button id="ext-tag" class="btn ext-tag hidden" type="button" title="在新标签页打开酒馆地址">外部酒馆</button>
-      <div id="stop-wrap" class="split hidden">
-        <button id="stop-btn" class="btn primary split-main" type="button">关闭酒馆</button>
-        <button id="stop-menu-btn" class="btn primary split-caret" type="button" aria-label="更多操作">▾</button>
-        <div id="stop-menu" class="split-menu hidden">
-          <button type="button" data-act="stop">关闭</button>
-          <button type="button" data-act="restart">重启</button>
+    </div>
+
+    <div class="panel-grid">
+      <div class="card">
+        <div class="card-title">酒馆服务</div>
+        <div class="card-actions">
+          <button id="start" class="btn primary hidden" type="button">启动酒馆</button>
+          <button id="install" class="btn primary hidden" type="button">安装酒馆</button>
+          <div id="stop-wrap" class="split hidden">
+            <button id="stop-btn" class="btn primary split-main" type="button">关闭酒馆</button>
+            <button id="stop-menu-btn" class="btn primary split-caret" type="button" aria-label="更多操作">▾</button>
+            <div id="stop-menu" class="split-menu hidden">
+              <button type="button" data-act="stop">关闭</button>
+              <button type="button" data-act="restart">重启</button>
+            </div>
+          </div>
+          <button id="stop-all" class="btn hidden" type="button">关闭全部</button>
         </div>
       </div>
-      <button id="install" class="btn primary hidden" type="button">安装酒馆</button>
-      <button id="start" class="btn primary hidden" type="button">启动酒馆</button>
+      <div class="card">
+        <div class="card-title">外部打开</div>
+        <div class="card-actions">
+          <button id="ext-tag" class="btn ext-tag hidden" type="button" title="在新标签页打开酒馆">在新标签页打开酒馆</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">数据工具</div>
+        <div class="card-actions">
+          <button id="export-data" class="btn" type="button">导出整库备份</button>
+        </div>
+      </div>
     </div>
 
-    <div id="fallback" class="fallback hidden">
-      <p id="fallback-title" class="fallback-title">无法内嵌酒馆界面</p>
-      <p id="fallback-desc" class="fallback-desc">
-        请复制上方地址在新标签页打开。常见原因：浏览器混合内容拦截（面板 HTTPS 而酒馆 HTTP）或 Dashboard 沙箱存储限制。
-      </p>
-    </div>
-
-    <iframe id="frame" class="frame hidden" referrerpolicy="no-referrer"></iframe>
+    <div id="message" class="message-area hidden"></div>
 
     <script type="module" src="./app.js"></script>
   </body>

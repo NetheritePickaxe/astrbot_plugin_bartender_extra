@@ -12,7 +12,7 @@ from astrbot.api import logger, AstrBotConfig
 from astrbot.api.message_components import Node, Nodes, Plain, Image, File, Reply
 
 try:  # 插件 Pages 后端 API（AstrBot >= v4.24.2），旧版降级跳过
-    from astrbot.api.web import json_response
+    from astrbot.api.web import json_response, file_response
     _WEB_API_AVAILABLE = True
 except ImportError:
     _WEB_API_AVAILABLE = False
@@ -119,8 +119,8 @@ os.environ["PWDEBUG"] = "0"
 # 插件注册，参数分别为：插件名（唯一标识符）、作者、简介、版本号    
 @register(PLUGIN_NAME,
            "dragonuniverse8248编写 GML5.2 & deepseek指导",
-              "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
-                "1.6.10")
+"基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
+                 "1.7.0")
 
 
 
@@ -183,6 +183,12 @@ class bartender_crawler(Star):
             self.page_restart_tavern,
             ["POST"],
             "重启插件目录中的酒馆服务（先停后启）",
+        )
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/tavern/export-data",
+            self.page_export_data,
+            ["POST"],
+            "导出整库备份（zip 文件下载）",
         )
 
     def _check_access(self, event):
@@ -1485,7 +1491,6 @@ class bartender_crawler(Star):
             npm_ok, npm_msg = await self._ensure_npm_install(st_dir)
             if not npm_ok:
                 return False, npm_msg
-        self._patch_st_helmet(st_dir)
         # 后台启动
         log_path = self.cache_dir / "sillytavern.log"
         try:
@@ -1592,6 +1597,13 @@ class bartender_crawler(Star):
         """重启酒馆服务（供 WebUI 分体按钮调用）"""
         ok, msg = await self.restart_tavern()
         return json_response({"ok": ok, "message": msg})
+
+    async def page_export_data(self):
+        """导出整库备份（zip 文件下载）"""
+        path, msg = await self.backup_tavern_data()
+        if path and path.exists():
+            return file_response(path, filename=path.name)
+        return json_response({"ok": False, "message": msg})
 
 
 

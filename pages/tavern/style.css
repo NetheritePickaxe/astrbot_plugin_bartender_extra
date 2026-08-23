@@ -9,6 +9,9 @@
   --online: #4ade80;
   --offline: #f87171;
   --unknown: #7d7d7d;
+  --success: #4ade80;
+  --error: #f87171;
+  --info: #60a5fa;
 }
 
 [data-theme="light"] {
@@ -22,14 +25,16 @@
   --online: #22c55e;
   --offline: #ef4444;
   --unknown: #9ca3af;
+  --success: #22c55e;
+  --error: #ef4444;
+  --info: #3b82f6;
 }
 
 * {
   box-sizing: border-box;
 }
 
-html,
-body {
+html, body {
   height: 100%;
   margin: 0;
 }
@@ -120,20 +125,22 @@ body {
   background: transparent;
 }
 
-/* 分体按钮 */
 .split {
   display: inline-flex;
   position: relative;
 }
+
 .split-main {
   border-radius: 6px 0 0 6px;
 }
+
 .split-caret {
   border-radius: 0 6px 6px 0;
   border-left: none;
   padding: 6px 8px;
   font-size: 11px;
 }
+
 .split-menu {
   position: absolute;
   top: 100%;
@@ -147,6 +154,7 @@ body {
   z-index: 20;
   overflow: hidden;
 }
+
 .split-menu button {
   display: block;
   width: 100%;
@@ -159,14 +167,15 @@ body {
   cursor: pointer;
   transition: background 0.1s;
 }
+
 .split-menu button:hover {
   background: var(--bg);
 }
+
 .split-menu button:not(:last-child) {
   border-bottom: 1px solid var(--border);
 }
 
-/* 外部酒馆徽章 */
 .ext-tag {
   background: transparent;
   border: 1px dashed var(--border);
@@ -176,6 +185,7 @@ body {
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
 }
+
 .ext-tag:hover {
   border-color: var(--primary);
   color: var(--primary);
@@ -190,31 +200,70 @@ body {
   display: none !important;
 }
 
-.fallback {
-  margin: 24px auto;
-  max-width: 560px;
-  padding: 22px 24px;
+.panel-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 24px;
+  justify-content: center;
+  align-items: flex-start;
+  flex: 1;
+}
+
+.card {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
-  line-height: 1.7;
-  font-size: 14px;
-  color: var(--sub);
-}
-
-.fallback-title {
-  margin: 0 0 8px;
-  font-size: 16px;
-  color: var(--text);
-}
-
-.fallback-desc {
-  margin: 0;
-}
-
-.frame {
+  padding: 20px;
+  min-width: 240px;
+  max-width: 320px;
   flex: 1;
-  width: 100%;
-  border: none;
-  background: var(--bg);
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.card-actions .btn {
+  flex: 1;
+  min-width: 90px;
+  text-align: center;
+}
+
+.message-area {
+  margin: 0 24px 24px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.message-area.info {
+  background: color-mix(in srgb, var(--info) 15%, transparent);
+  color: var(--info);
+  border: 1px solid color-mix(in srgb, var(--info) 30%, transparent);
+}
+
+.message-area.success {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  color: var(--success);
+  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+}
+
+.message-area.error {
+  background: color-mix(in srgb, var(--error) 15%, transparent);
+  color: var(--error);
+  border: 1px solid color-mix(in srgb, var(--error) 30%, transparent);
 }
