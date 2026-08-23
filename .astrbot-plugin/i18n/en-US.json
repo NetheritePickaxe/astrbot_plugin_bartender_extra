@@ -1,0 +1,315 @@
+{
+  "metadata": {
+    "display_name": "Bartender",
+    "short_desc": "Play SillyTavern remotely through your bot",
+    "desc": "Operates and interacts with SillyTavern via the Playwright headless browser, letting you play SillyTavern remotely through a bot for a richer experience than shared-session scripts."
+  },
+  "config": {
+    "language": {
+      "description": "Reply language",
+      "hint": "Language of the plugin's chat replies and page backend messages; independent from the WebUI display language",
+      "labels": ["Simplified Chinese", "English"]
+    },
+    "now_chats_name": {
+      "description": "Current character card",
+      "hint": "Stores and displays the current character card; do not edit it here"
+    },
+    "browser_ip": {
+      "description": "Tavern address",
+      "hint": "Remote address and protocol used to connect to the tavern"
+    },
+    "browser_port": {
+      "description": "Tavern port",
+      "hint": "Remote port used to connect to the tavern"
+    },
+    "browser_delay": {
+      "description": "Action delay",
+      "hint": "Delay between clicks and lookups, in milliseconds"
+    },
+    "upload_interval": {
+      "description": "Card upload timeout",
+      "hint": "Seconds allowed for sending a character card after /酒加卡"
+    },
+    "reaction_emoji": {
+      "description": "Processing emoji reaction",
+      "hint": "QQ emoji reaction attached to the triggering message while a command runs, replacing a text placeholder. Use a QQ system emoji ID (e.g. 319 = heart) or an emoji character (e.g. 🫶); leave empty to disable. QQ only; requires the protocol to support set_msg_emoji_like"
+    },
+    "show_floor_count": {
+      "description": "Show floor count",
+      "hint": "When enabled, /酒 replies are prefixed with \"X floors total\"; off by default. Does not affect /酒查看"
+    },
+    "global_persona_binding": {
+      "description": "Global persona binding",
+      "hint": "When enabled, persona bindings apply globally per QQ account (same persona in all groups); when disabled, bindings are isolated per group. Off by default"
+    },
+    "thread_safe_mode": {
+      "description": "Thread-safe mode",
+      "hint": "When enabled, the browser is opened temporarily for each command and closed afterwards (slower, no resident memory). When disabled, the browser stays resident for fast responses. Both modes prevent leftover browser processes; if issues persist, use /酒进程 to clean up"
+    },
+    "browser_Visible": {
+      "description": "Headless browser",
+      "hint": "Turn off to make the browser visible for debugging and inspecting load state"
+    },
+    "admin_only": {
+      "description": "Admin-only mode",
+      "hint": "When enabled, all tavern commands require an admin; toggle live in chat with /酒权限 管理 开|关"
+    },
+    "whitelist_groups": {
+      "description": "Group whitelist",
+      "hint": "Group IDs allowed to use tavern commands; empty means no restriction. Maintain with /酒权限 白名单 群号"
+    },
+    "blacklist_groups": {
+      "description": "Group blacklist",
+      "hint": "Group IDs forbidden from using tavern commands; takes priority over the whitelist. Maintain with /酒权限 黑名单 群号"
+    }
+  },
+  "pages": {
+    "tavern": {
+      "title": "Tavern UI",
+      "description": "Check the tavern connection status, start the bundled tavern with one click, and access the tavern UI embedded",
+      "checking": "Checking…",
+      "copy": "Copy",
+      "copy_title": "Copy address",
+      "refresh": "Refresh",
+      "start": "Start tavern",
+      "starting": "Starting…",
+      "fallback_title": "Cannot embed tavern UI",
+      "fallback_desc": "Open the address above in a new tab instead. Common causes: mixed content blocked by the browser (panel HTTPS while tavern is HTTP) or Dashboard sandbox storage limits.",
+      "online": "Tavern online",
+      "mixed_title": "Mixed content blocked",
+      "mixed_desc": "The panel is served over HTTPS while the tavern is HTTP, so the browser forbids embedding. Copy the address and open it in a new tab, or serve the panel over HTTP.",
+      "offline": "Tavern not connected",
+      "offline_desc_base": "No running tavern service detected.",
+      "offline_desc_start": "Click \"Start tavern\" in the top-right to launch the bundled tavern.",
+      "offline_desc_manual": "Make sure the tavern is running, or check the address and port in the plugin config.",
+      "status_fail": "Failed to get status",
+      "retry": "Please try again later.",
+      "start_fail": "Start failed",
+      "copied": "Copied",
+      "press_ctrl_c": "Press Ctrl+C"
+    }
+  },
+  "chat": {
+    "access": {
+      "blacklisted": "This group is blacklisted; tavern commands are disabled",
+      "not_whitelisted": "This group is not on the whitelist; tavern commands are disabled",
+      "admin_only": "Admin-only mode is enabled; this command is restricted to admins"
+    },
+    "status": {
+      "ok": "OK",
+      "error": "Error",
+      "fail": "Failed",
+      "no_char": "No character card",
+      "browser_down": "Browser not connected",
+      "no_generation": "Nothing is being generated",
+      "stopped": "Stopped",
+      "no_more_swipes": "No more replies",
+      "empty_message": "Merged message is empty",
+      "empty_input": "Empty input is not allowed"
+    },
+    "state": {
+      "on": "On",
+      "off": "Off",
+      "none": "None",
+      "enabled": "enabled",
+      "disabled": "disabled"
+    },
+    "error": {
+      "exec": "Command failed unexpectedly, please try again later"
+    },
+    "busy": {
+      "shake": "Shaking… please wait a moment",
+      "wait": "Waiting for another operation to finish",
+      "other_op": "Another operation is in progress, please try again later"
+    },
+    "browser_fail": "Browser connection failed",
+    "close": {
+      "done": "Browser closed and all background Chrome/Chromium processes cleaned up"
+    },
+    "send": {
+      "failed": "Send failed: {status}"
+    },
+    "floor": {
+      "count": "{count} floors total",
+      "truncated": "(content too long, truncated)"
+    },
+    "list": {
+      "roles": "Character list:\n{chats}",
+      "roles_current": "Current character list:\n{chats}"
+    },
+    "switch": {
+      "done": "Switched to character card: {name}",
+      "not_found": "Character card not found: {name}",
+      "empty": "Message cannot be empty"
+    },
+    "delete": {
+      "not_number": "Please enter a number",
+      "done": "Deleted {deleted} floor(s)\n{remaining} floors remaining",
+      "bad": "Invalid floor count or already at minimum"
+    },
+    "delete_char": {
+      "no_name": "Please enter the character card name",
+      "default_forbidden": "The default character cannot be deleted",
+      "not_found": "Character card name not found"
+    },
+    "upload": {
+      "wait": "Please send the character card within {seconds} seconds",
+      "received": "Character card received, adding…",
+      "timeout": "Timed out waiting; operation cancelled"
+    },
+    "regenerate": {
+      "failed": "Regeneration failed: {status}"
+    },
+    "continue": {
+      "failed": "Continuation failed: {status}"
+    },
+    "new_chat": {
+      "failed": "New chat failed: {status}",
+      "done": "New chat started, {count} floors total"
+    },
+    "quote": {
+      "list_sep": ", ",
+      "not_found": "No floor matching the quoted message was found in the tavern",
+      "single": "The quoted message is floor #{n}",
+      "multi": "The quoted message matches multiple floors: #{nums}"
+    },
+    "export": {
+      "done": "Current chat history exported",
+      "failed": "Export failed, current chat history not found"
+    },
+    "stats": {
+      "failed": "Failed to get stats or no character card",
+      "unknown_name": "Unknown",
+      "no_stats": "Character: {name}\nNo chat stats found for this character",
+      "character": "Character: {name}",
+      "messages": "Messages: {user} by user / {role} by character",
+      "words": "Words: {user} by user / {role} by character",
+      "swipes": "Swipes: {count}",
+      "gen_time": "Total generation time: {seconds} s",
+      "chat_size": "Chat file size: {size} bytes",
+      "last_chat": "Last chat: {time}",
+      "first_chat": "First chat: {time}"
+    },
+    "rename": {
+      "usage": "Usage: /酒改名 old-name new-name",
+      "default_forbidden": "The default character name cannot be changed",
+      "failed": "Rename failed: {msg}",
+      "done": "Renamed \"{old}\" to \"{new}\"\nCurrent character list:\n{chats}",
+      "not_found": "Character card not found",
+      "request_failed": "Rename request failed"
+    },
+    "persona": {
+      "panel_open_fail": "Failed to open the persona panel",
+      "not_found": "Persona not found",
+      "modify_usage": "Usage: /酒人设 修改 [name] [content] (name only deletes the persona)",
+      "action_update": "updated",
+      "action_delete": "deleted",
+      "action_create": "created",
+      "deleted": "Persona deleted: {name}",
+      "created_empty": "Empty persona created: {name}",
+      "done": "Persona {action}: {name}",
+      "fail": "Failed to {action} persona: {msg}",
+      "unbound": "Persona unbound",
+      "not_bound": "No persona is currently bound",
+      "bound": "Persona bound: {name}",
+      "not_found_with_hint": "Persona not found: {name}; send /酒人设 to view all personas",
+      "list_fail": "Browser connection failed, cannot fetch the persona list",
+      "current_bound": "Your bound persona: {name}",
+      "current_tavern": "Current tavern persona: {name}",
+      "list_header": "Persona list:",
+      "list_item": "- {name} ({avatar_id})",
+      "none_in_tavern": "No personas in the tavern yet; create one on the tavern page first",
+      "bind_fail": "Failed to switch persona: {name}; send /酒人设 解绑 to unbind and rebind"
+    },
+    "status_cmd": {
+      "text": "Current character card: {chat}\nConnection status: {status}\nYour bound persona: {bound}\nCharacter list:\n{chats}"
+    },
+    "chrome": {
+      "browser_connected": "Connected",
+      "browser_disconnected": "Connection lost",
+      "not_started": "Not started",
+      "driver_running": "Running",
+      "total": "Total system chrome/chromium processes: {total}",
+      "detail": "Details: {detail}",
+      "browser": "Plugin browser: {state}",
+      "driver": "Playwright driver: {state}"
+    },
+    "reset": {
+      "done": "All variables reset"
+    },
+    "tavern": {
+      "already_running": "The tavern is already running",
+      "not_found": "SillyTavern not found in the plugin directory; run the download_sillytavern script first",
+      "no_node_win": "Node.js not detected. SillyTavern requires Node.js 18 or newer. Install it with: winget install OpenJS.NodeJS.LTS",
+      "no_node_unix": "Node.js not detected. SillyTavern requires Node.js 18 or newer. Install it via nvm or the official website",
+      "start_failed": "Start failed: {error}",
+      "started": "The tavern has started",
+      "timeout": "Tavern startup timed out; check the log: {path}",
+      "connected_suffix": " — auto-connected"
+    },
+    "mode": {
+      "already_started": "You already have a tavern chat mode active; use /酒结束 first",
+      "private_no_group": "Group mode is not supported in private chats; enabled for you only",
+      "group_taken": "Group chat mode is already active in this group",
+      "scope_group": "this group",
+      "scope_user": "you",
+      "started": "Tavern chat mode enabled ({scope})\nCurrent character: {chat}\nSend messages directly (no /酒 prefix needed)\n/酒结束 to exit",
+      "not_started": "You do not have a tavern chat mode active",
+      "ended": "Tavern chat mode disabled"
+    },
+    "perms": {
+      "header": "Current permission settings",
+      "admin_mode": "Admin mode: {state}",
+      "whitelist": "Whitelisted groups: {list}",
+      "blacklist": "Blacklisted groups: {list}",
+      "usage": "Usage: /酒权限 管理 开|关｜/酒权限 白名单 [群号|移除 群号]｜/酒权限 黑名单 [群号|移除 群号]",
+      "unknown_sub": "Unknown subcommand. Usage: /酒权限 管理 开|关｜/酒权限 白名单 [群号|移除 群号]｜/酒权限 黑名单 [群号|移除 群号]",
+      "admin_current": "Admin mode is currently: {state}",
+      "admin_bad_arg": "Bad argument. Usage: /酒权限 管理 开|关",
+      "admin_set": "Admin mode {state} (all tavern commands {scope})",
+      "scope_admin": "admin only",
+      "scope_all": "for everyone",
+      "group_removed": "Group {gid} removed from {sub}",
+      "group_added": "Group {gid} added to {sub}; current {sub}: {list}",
+      "group_current": "Current {sub} groups: {list}",
+      "label_whitelist": "whitelist",
+      "label_blacklist": "blacklist"
+    },
+    "help": {
+      "header": "Command help",
+      "lines": [
+        "/酒 [text]\nSends your input to the tavern and returns the result. Images are not supported; empty input is not allowed",
+        "/酒切换 [name]\nSwitches the character card. Does nothing if the name is not in the list; numbers are not allowed",
+        "/酒删除 [count]\nDeletes floors. Defaults to one floor when no count is given; deleting two floors including your own input is recommended",
+        "/酒加卡 [image] or /酒加卡\nAdds a character card to the tavern. Supports attaching the image directly, replying to a message with an image, or sending the image alone within the time limit",
+        "/酒删卡 [name]\nDeletes the named character card. If it is the current card, switches to the default; the default card cannot be deleted",
+        "/酒重生成\nRegenerates the latest floor's input and returns it. Takes no arguments",
+        "/酒续写\nContinues the latest floor, letting the AI keep generating after its latest reply",
+        "/酒备选 [上|下]\nSwitches to the previous/next alternative reply of the latest floor; defaults to next (next regenerates)",
+        "/酒停止生成\nStops the generation currently in progress",
+        "/酒新建\nStarts a new chat with the current character (clears the floors)",
+        "/酒导出\nExports the current chat history as a JSONL file and sends it",
+        "/酒统计\nShows chat stats for the current character (messages/words/generation time, etc.)",
+        "/酒改名 [old] [new]\nRenames a character card; the default character name cannot be changed",
+        "/酒查看\nShows the latest floor's messages, including your own input if it is latest. Reply to a message first to locate its floor number",
+        "/酒人设\nShows your bound persona and the tavern persona list",
+        "/酒人设 绑定 [name]\nBinds a tavern User Persona for you; /酒 and /酒重生成 will switch to it first",
+        "/酒人设 查看 [name]\nShows details of a persona (name, description, position); without arguments shows the persona list",
+        "/酒人设 修改 [name] [content]\nCreates or modifies a persona: creates if absent (empty persona with name only), updates the description if present with content, deletes if present without content",
+        "/酒人设 解绑\nUnbinds your current persona",
+        "/酒世界书\nLists all world info books and the currently active ones",
+        "/酒世界书 查看 [name]\nShows entries of a world info book (trigger keywords and content)",
+        "/酒世界书 切换 [name]\nToggles a world info book on/off for the current character",
+        "/酒开始 群聊\nEnables tavern chat mode: messages are forwarded to the tavern directly without the /酒 prefix. With \"群聊\" it applies to the current group, without it to you only",
+        "/酒结束\nEnds the tavern chat mode you created",
+        "/酒状态\nShows the current character card, the character list, and the browser status",
+        "/酒帮助\nYou are literally reading it right now.",
+        "/酒启动[admin]\nStarts the tavern in the plugin directory and auto-connects",
+        "/酒重置[admin]\nResets all global variables; try this when variables are in a broken state",
+        "/酒关闭[admin]\nCloses the plugin browser and cleans up all background chrome/chromium processes",
+        "/酒权限[admin]\nManages command access: 管理 开|关 (admin mode), 白名单 [群号|移除 群号], 黑名单 [群号|移除 群号]",
+        "/酒进程[admin]\nShows the current chrome/chromium process count and browser status"
+      ]
+    }
+  }
+}
