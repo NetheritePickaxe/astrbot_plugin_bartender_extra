@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "display_name": "Bartender",
+    "display_name": "Bartender Enhanced",
     "short_desc": "Play SillyTavern remotely through your bot",
     "desc": "Operates and interacts with SillyTavern via the Playwright headless browser, letting you play SillyTavern remotely through a bot for a richer experience than shared-session scripts."
   },
@@ -231,9 +231,38 @@
       "list_header": "Persona list:",
       "list_item": "- {name} ({avatar_id})",
       "none_in_tavern": "No personas in the tavern yet; create one on the tavern page first",
-      "bind_fail": "Failed to switch persona: {name}; send /酒人设 解绑 to unbind and rebind"
-    },
-    "status_cmd": {
+       "bind_fail": "Failed to switch persona: {name}; send /酒人设 解绑 to unbind and rebind",
+       "bind_usage": "Usage: /酒人设 绑定 [name]",
+       "view_not_found": "Persona not found: {name}",
+       "unknown_sub": "Unknown subcommand. Available: 绑定, 查看, 修改, 解绑; send /酒人设 to view all personas",
+       "field_name": "Persona: {name}",
+       "field_avatar": "Avatar ID: {id}",
+       "field_position": "Position: {pos}",
+       "field_desc": "Description:\n{desc}",
+       "empty_desc": "[empty]"
+     },
+     "worldinfo": {
+       "usage_view": "Usage: /酒世界书 查看 [name]",
+       "usage_toggle": "Usage: /酒世界书 切换 [name]",
+       "not_found": "World info book not found: {name}",
+       "not_found_plain": "World info book not found",
+       "selector_missing": "World info selector missing",
+       "list_fail": "Failed to get world info list",
+       "detail_header": "World info: {name}",
+       "detail_count": "{count} entries",
+       "entry_item": "{i}. [{state}] Keys: {keys}",
+       "state_on": "on",
+       "state_off": "off",
+       "action_on": "enabled",
+       "action_off": "disabled",
+       "toggled": "World info \"{name}\" {action}",
+       "toggle_fail": "Toggle failed: {name}, {msg}",
+       "current_chat": "Current character: {name}",
+       "active_list": "Active world info books: {list}",
+       "all_header": "All world info books:",
+       "empty_list": "No world info books in the tavern"
+     },
+     "status_cmd": {
       "text": "Current character card: {chat}\nConnection status: {status}\nYour bound persona: {bound}\nCharacter list:\n{chats}"
     },
     "chrome": {
@@ -243,9 +272,10 @@
       "driver_running": "Running",
       "total": "Total system chrome/chromium processes: {total}",
       "detail": "Details: {detail}",
-      "browser": "Plugin browser: {state}",
-      "driver": "Playwright driver: {state}"
-    },
+       "browser": "Plugin browser: {state}",
+       "driver": "Playwright driver: {state}",
+       "stat_fail": "Stats failed: {err}"
+     },
     "reset": {
       "done": "All variables reset"
     },

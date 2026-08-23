@@ -13,6 +13,8 @@ _✨ [AstrBot](https://github.com/AstrBotDevs/AstrBot) 酒馆（SillyTavern）�
 
 ## 🤝 介绍
 
+本项目是 [dragonuniverse8248/astrbot_plugin_bartender](https://github.com/dragonuniverse8248/astrbot_plugin_bartender) 的 **Fork 增强分支**，在原项目基础上新增了 WebUI 页面、人设绑定、世界书管理、聊天模式等功能。
+
 **astrbot_plugin_bartender_extra** 是一个基于 Playwright 无头浏览器库的 AstrBot 插件，通过对 [SillyTavern（酒馆）](https://github.com/SillyTavern/SillyTavern) 前端页面进行自动化操作与交互，实现在聊天机器人（QQ/微信等平台）中与酒馆 AI 角色进行对话。
 
 插件通过操控本地或远程部署的酒馆前端页面，完成消息发送、角色切换、角色卡管理、楼层删除等操作，让用户无需直接打开酒馆页面，即可在聊天平台上无缝体验 AI 角色扮演，游戏体验高于现成的联机脚本。
@@ -27,6 +29,21 @@ _✨ [AstrBot](https://github.com/AstrBotDevs/AstrBot) 酒馆（SillyTavern）�
 - 🧵 **线程安全模式**：可配置的浏览器线程管理模式，避免浏览器实例冲突
 - 🖥️ **跨平台支持**：兼容 Windows / Linux，自动适配浏览器可执行文件
 - 🧹 **进程清理**：提供管理员指令，一键清理残留的 Chrome/Chromium 后台进程
+
+### 🆕 本项目新增功能
+
+基于原项目，本增强分支额外提供：
+
+- 🖥️ **WebUI 插件页面**：AstrBot 面板内直接内嵌酒馆 WebUI，支持状态检测、一键启动/一键安装 SillyTavern（需 AstrBot ≥ v4.24.2）
+- 💬 **酒馆聊天模式**：`/酒开始 [群聊]` 开启后无需指令前缀，直接发消息即转酒馆；`/酒结束` 退出
+- 👤 **人设子命令系统**：`/酒人设 绑定/查看/修改/解绑` 精细化控制，按群隔离或全局绑定
+- 📚 **世界书管理**：`/酒世界书` 查看全部/查看条目/一键启停世界书
+- 🔐 **权限控制**：管理员模式、群白名单/黑名单，支持 `/酒权限` 在线管理
+- ✍️ **生成控制**：续写（`/酒续写`）、备选回复切换（`/酒备选`）、中断生成（`/酒停止生成`）、新对话（`/酒新建`）
+- 🛠️ **角色卡工具**：聊天记录导出（`/酒导出`）、聊天统计（`/酒统计`）、重命名（`/酒改名`）
+- 🌐 **国际化**：插件回复支持简体中文 / English 双语
+- 📦 **一键部署**：内置 SillyTavern 下载脚本与浏览器自动下载脚本，WebUI 支持一键安装并启动酒馆
+- 🎁 **体验优化**：引用消息定位楼层、处理中表情回应、可选楼层数提示等
 
 ## 🖥️ 前置运行依赖说明
 
@@ -94,7 +111,7 @@ astrbot_plugin_bartender_extra/
 
 ### 📦 方式二：手动下载 GitHub Releases 压缩包
 
-1. 前往 [GitHub Releases](https://github.com/dragonuniverse8248/astrbot_plugin_bartender_extra/releases) 页面
+1. 前往 [GitHub Releases](https://github.com/NetheritePickaxe/astrbot_plugin_bartender_extra/releases) 页面
 2. 下载 `browser.zip` 压缩包
 3. 将压缩包解压到插件根目录，确保最终目录结构为：
 
@@ -127,7 +144,7 @@ playwright install chromium
 ```bash
 # 克隆仓库到插件目录
 cd /AstrBot/data/plugins
-git clone https://github.com/dragonuniverse8248/astrbot_plugin_bartender_extra
+git clone https://github.com/NetheritePickaxe/astrbot_plugin_bartender_extra
 
 # 控制台重启AstrBot
 ```
@@ -181,9 +198,11 @@ git clone https://github.com/dragonuniverse8248/astrbot_plugin_bartender_extra
 |    删除楼层    | `/酒删除 2`                             | 删除最近的 2 层聊天楼层       |
 |  添加角色卡  | 先发 `/酒加卡`，再在等待时间内发送图片 | 支持分步操作，无需一次发送     |
 | 查看状态    | `/酒状态`                                | 查看角色、列表和浏览器状态    |
-| 绑定人设    | `/酒人设 旅行者`                         | 绑定当前用户人设为“旅行者”，此后 `/酒` 自动切换    |
-| 解除人设    | `/酒人设解绑`                            | 解除当前用户的人设绑定    |
+| 绑定人设    | `/酒人设 绑定 旅行者`                     | 绑定当前用户人设为"旅行者"，此后 `/酒` 自动切换    |
+| 解除人设    | `/酒人设 解绑`                            | 解除当前用户的人设绑定    |
+| 查看人设详情    | `/酒人设 查看 旅行者`                     | 查看旅行者人设的名称、头像ID、描述等    |
 | 重新生成回复 | `/酒重生成`                                | 重新生成最新楼层的 AI 回复    |
+| 查看世界书    | `/酒世界书`                                | 列出所有世界书及当前已启用的    |
 
 ### 消息监听说明
 

@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "display_name": "调酒师",
+    "display_name": "调酒师-增强",
     "short_desc": "通过机器人远程游玩 SillyTavern",
     "desc": "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起"
   },
@@ -231,9 +231,38 @@
       "list_header": "人设列表：",
       "list_item": "- {name}（{avatar_id}）",
       "none_in_tavern": "酒馆中暂无任何人设，可先在酒馆页面创建",
-      "bind_fail": "人设切换失败：{name}，请发送 /酒人设 解绑 解除后重新绑定"
-    },
-    "status_cmd": {
+       "bind_fail": "人设切换失败：{name}，请发送 /酒人设 解绑 解除后重新绑定",
+       "bind_usage": "请输入：/酒人设 绑定 [人设名]",
+       "view_not_found": "未找到人设：{name}",
+       "unknown_sub": "未知子命令，可用：绑定、查看、修改、解绑；发送 /酒人设 查看全部人设",
+       "field_name": "人设：{name}",
+       "field_avatar": "头像ID：{id}",
+       "field_position": "位置：{pos}",
+       "field_desc": "描述：\n{desc}",
+       "empty_desc": "[空]"
+     },
+     "worldinfo": {
+       "usage_view": "请输入：/酒世界书 查看 [名字]",
+       "usage_toggle": "请输入：/酒世界书 切换 [名字]",
+       "not_found": "未找到世界书：{name}",
+       "not_found_plain": "未找到世界书",
+       "selector_missing": "未找到世界书选择器",
+       "list_fail": "获取世界书列表失败",
+       "detail_header": "世界书：{name}",
+       "detail_count": "共 {count} 条目",
+       "entry_item": "{i}. [{state}] 触发词：{keys}",
+       "state_on": "启用",
+       "state_off": "停用",
+       "action_on": "已启用",
+       "action_off": "已停用",
+       "toggled": "世界书「{name}」{action}",
+       "toggle_fail": "切换失败：{name}，{msg}",
+       "current_chat": "当前角色：{name}",
+       "active_list": "已启用世界书：{list}",
+       "all_header": "所有世界书：",
+       "empty_list": "酒馆中暂无世界书"
+     },
+     "status_cmd": {
       "text": "当前角色卡为：{chat}\n链接状态：{status}\n你的绑定人设：{bound}\n角色列表：\n{chats}"
     },
     "chrome": {
@@ -243,9 +272,10 @@
       "driver_running": "运行中",
       "total": "系统 chrome/chromium 进程总数：{total}",
       "detail": "明细：{detail}",
-      "browser": "插件浏览器：{state}",
-      "driver": "playwright 驱动：{state}"
-    },
+       "browser": "插件浏览器：{state}",
+       "driver": "playwright 驱动：{state}",
+       "stat_fail": "统计失败: {err}"
+     },
     "reset": {
       "done": "已重置获取所有变量"
     },

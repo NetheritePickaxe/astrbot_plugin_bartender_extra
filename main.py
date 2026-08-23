@@ -47,6 +47,10 @@ _STATUS_TEXT_KEYS = {
     "禁止输入为空": "chat.status.empty_input",
     "打开人设面板失败": "chat.persona.panel_open_fail",
     "未找到人设": "chat.persona.not_found",
+    "已启用": "chat.worldinfo.action_on",
+    "已停用": "chat.worldinfo.action_off",
+    "未找到世界书": "chat.worldinfo.not_found_plain",
+    "世界书选择器缺失": "chat.worldinfo.selector_missing",
 }
 # 重命名角色卡 REST 返回码 -> i18n key
 _RENAME_ERR_KEYS = {
@@ -85,7 +89,7 @@ os.environ["PWDEBUG"] = "0"
 @register(PLUGIN_NAME,
            "dragonuniverse8248编写 GML5.2 & deepseek指导",
             "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
-             "1.6.0")
+              "1.6.1")
 
 
 
@@ -730,23 +734,28 @@ class bartender_crawler(Star):
                 result = await self.page.evaluate(
                     """(name) => {
                         const sel = document.getElementById('world_info');
-                        if (!sel) return {ok: false, msg: '未找到世界书选择器'};
+                        if (!sel) return {ok: false, code: 'selector'};
                         let opt = null;
                         for (const o of sel.options) {
                             if (o.text === name || o.value === name) { opt = o; break; }
                         }
-                        if (!opt) return {ok: false, msg: '未找到世界书：' + name};
+                        if (!opt) return {ok: false, code: 'not_found'};
                         const was = opt.selected;
                         opt.selected = !was;
                         sel.dispatchEvent(new Event('change', {bubbles: true}));
-                        return {ok: true, state: was ? '已停用' : '已启用'};
+                        return {ok: true, was};
                     }""",
                     name,
                 )
             finally:
                 if not was_open: # 关闭抽屉（如果原来就是开的就不关）
                     await self.page.locator("#WIDrawerIcon").click()
-            return result.get("ok", False), result.get("state") or result.get("msg", "错误")
+            if not result.get("ok", False):
+                code = result.get("code", "")
+                msg = {"selector": "世界书选择器缺失", "not_found": "未找到世界书"}.get(code, "错误")
+                return False, msg
+            was = bool(result.get("was"))
+            return True, "已停用" if was else "已启用"
         except Exception as e:
             logger.error(f"切换世界书失败：{e}")
             return False, "错误"
@@ -1329,7 +1338,7 @@ class bartender_crawler(Star):
                         detail.append(f"{name}: {n}")
                     total += n
         except Exception as e:
-            return -1, [f"统计失败: {e}"]
+            return -1, [self.t("chat.chrome.stat_fail", err=e)]
         return total, detail
 
     async def start_tavern(self):
@@ -1461,7 +1470,7 @@ class bartender_crawler(Star):
                 if len(tokens) > 1: # 子命令模式
                     if tokens[1] == "绑定": # /酒人设 绑定 [名字]
                         if len(tokens) < 3:
-                            yield event.plain_result("请输入：/酒人设 绑定 [人设名]")
+                            yield event.plain_result(self.t("chat.persona.bind_usage"))
                             return
                         persona_name = " ".join(tokens[2:])
                         ok, avatar_id = await bartender_crawler.switch_persona(self, persona_name)
@@ -1475,11 +1484,11 @@ class bartender_crawler(Star):
                     if tokens[1] == "查看" and len(tokens) >= 3: # /酒人设 查看 [名字] → 查看人设详情
                         persona_name = " ".join(tokens[2:])
                         if not await bartender_crawler.open_persona_panel(self):
-                            yield event.plain_result("打开人设面板失败")
+                            yield event.plain_result(self._t_status("打开人设面板失败"))
                             return
                         try:
                             if not await bartender_crawler._select_persona_block(self, persona_name):
-                                yield event.plain_result(f"未找到人设：{persona_name}")
+                                yield event.plain_result(self.t("chat.persona.view_not_found", name=persona_name))
                                 return
                             desc = await self.page.locator("#persona_description").input_value()
                             display_name = await self.page.locator("#your_name").inner_text()
@@ -1489,10 +1498,11 @@ class bartender_crawler(Star):
                                 avatar_id = await blocks.first.get_attribute("data-avatar-id") or ""
                             pos_sel = self.page.locator("#persona_description_position")
                             pos_val = await pos_sel.evaluate("el => el.options[el.selectedIndex]?.text || ''") if await pos_sel.count() else ""
-                            lines = [f"人设：{display_name}", f"头像ID：{avatar_id or '无'}"]
+                            lines = [self.t("chat.persona.field_name", name=display_name),
+                                     self.t("chat.persona.field_avatar", id=avatar_id or self.t("chat.state.none"))]
                             if pos_val:
-                                lines.append(f"位置：{pos_val}")
-                            lines.append(f"描述：\n{desc or '[空]'}")
+                                 lines.append(self.t("chat.persona.field_position", pos=pos_val))
+                            lines.append(self.t("chat.persona.field_desc", desc=desc or self.t("chat.persona.empty_desc")))
                             yield event.plain_result("\n".join(lines))
                         finally:
                             await bartender_crawler.close_persona_panel(self)
@@ -1541,7 +1551,7 @@ class bartender_crawler(Star):
                         else:
                             yield event.plain_result(self.t("chat.persona.not_bound"))
                         return
-                    yield event.plain_result("未知子命令，可用：绑定、查看、修改、解绑；/酒人设 查看全部人设")
+                    yield event.plain_result(self.t("chat.persona.unknown_sub"))
                     return
                 # 查看模式：/酒人设
                 bound = self.persona_bindings.get(session_key)
@@ -2216,12 +2226,12 @@ class bartender_crawler(Star):
                 tokens = user_message.split()
                 if len(tokens) > 1 and tokens[1] == "查看":
                     if len(tokens) < 3:
-                        yield event.plain_result("请输入：/酒世界书 查看 [名字]")
+                        yield event.plain_result(self.t("chat.worldinfo.usage_view"))
                         return
                     name = " ".join(tokens[2:])
                     data = await bartender_crawler.get_world_info_detail(self, name)
                     if not data:
-                        yield event.plain_result(f"未找到世界书：{name}")
+                        yield event.plain_result(self.t("chat.worldinfo.not_found", name=name))
                         return
                     entries = data.get("entries") or {}
                     if isinstance(entries, dict):
@@ -2230,53 +2240,60 @@ class bartender_crawler(Star):
                         entry_list = entries
                     else:
                         entry_list = []
-                    lines = [f"世界书：{name}", f"共 {len(entry_list)} 条目"]
+                    lines = [self.t("chat.worldinfo.detail_header", name=name),
+                             self.t("chat.worldinfo.detail_count", count=len(entry_list))]
+                    on_text = self.t("chat.worldinfo.state_on")
+                    off_text = self.t("chat.worldinfo.state_off")
                     for i, entry in enumerate(entry_list, 1):
                         enabled = not entry.get("disable", False)
                         keys = entry.get("key", "")
                         content = (entry.get("content", "") or "").strip()
-                        lines.append(f"{i}. [{'启用' if enabled else '停用'}] 触发词：{keys}")
+                        lines.append(self.t("chat.worldinfo.entry_item", i=i,
+                                            state=on_text if enabled else off_text, keys=keys))
                         if content:
                             lines.append(f"   {content[:200]}")
                     yield event.plain_result("\n".join(lines))
                 elif len(tokens) > 1 and tokens[1] == "切换":
                     if len(tokens) < 3:
-                        yield event.plain_result("请输入：/酒世界书 切换 [名字]")
+                        yield event.plain_result(self.t("chat.worldinfo.usage_toggle"))
                         return
                     name = " ".join(tokens[2:])
                     await bartender_crawler.react_message(self, event)
                     ok, msg = await bartender_crawler.toggle_world_info(self, name)
+                    msg_t = self._t_status(msg)
                     if ok:
-                        yield event.plain_result(f"世界书「{name}」{msg}")
+                        yield event.plain_result(self.t("chat.worldinfo.toggled", name=name, action=msg_t))
                     else:
-                        yield event.plain_result(f"切换失败：{msg}")
+                        yield event.plain_result(self.t("chat.worldinfo.toggle_fail", name=name, msg=msg_t))
                 else:
                     # 列出所有世界书 + 已启用
                     data = await bartender_crawler.list_world_infos(self)
                     if not data:
-                        yield event.plain_result("获取世界书列表失败")
+                        yield event.plain_result(self.t("chat.worldinfo.list_fail"))
                         return
                     wi_list = data.get("list") or []
                     active = data.get("active") or []
-                    chat_name = self.config.get('now_chats_name') or "无角色卡"
-                    lines = [f"当前角色：{chat_name}"]
-                    lines.append(f"已启用世界书：{', '.join(active) if active else '无'}")
+                    none_text = self.t("chat.state.none")
+                    no_char = self._t_status("无角色卡")
+                    lines = [self.t("chat.worldinfo.current_chat", name=no_char)]
+                    lines.append(self.t("chat.worldinfo.active_list",
+                                        list=", ".join(active) if active else none_text))
                     if wi_list:
                         lines.append("---")
-                        lines.append("所有世界书：")
+                        lines.append(self.t("chat.worldinfo.all_header"))
                         for item in wi_list:
                             lines.append(f"- {item.get('name', item.get('file_id', '?'))}")
                     else:
-                        lines.append("酒馆中暂无世界书")
+                        lines.append(self.t("chat.worldinfo.empty_list"))
                     yield event.plain_result("\n".join(lines))
             except Exception as e:
                 logger.error(f"酒世界书指令异常: {e}")
-                yield event.plain_result("指令执行异常，请稍后重试")
+                yield event.plain_result(self.t("chat.error.exec"))
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result("正在Shake~，请稍作等待")
+            yield event.plain_result(self.t("chat.busy.shake"))
 
     @filter.command("酒帮助")
     @_access_required
