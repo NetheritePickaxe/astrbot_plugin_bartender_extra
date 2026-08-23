@@ -1054,8 +1054,8 @@ class bartender_crawler(Star):
             return False, "错误"
 
     async def open_browser_auto(self, first : bool):
-        """线程安全模式判断开启"""
-        if self.config['thread_safe_mode']: # 判断并且打开浏览器
+        """低内存占用模式判断开启"""
+        if self.config['low_memory_mode']: # 判断并且打开浏览器
             await self.initialize_browser() # 打开浏览器
             # await self.page.wait_for_timeout(800) # 等待防超时
             if first == False: # 初始化时无需打开角色卡
@@ -1133,8 +1133,8 @@ class bartender_crawler(Star):
         return matches
 
     async def close_browser_auto(self):
-        """线程安全模式判断关闭"""
-        if self.config['thread_safe_mode']: # 判断并且关闭浏览器
+        """低内存占用模式判断关闭"""
+        if self.config['low_memory_mode']: # 判断并且关闭浏览器
             await self.close_browser()
 
     async def close_browser(self):
@@ -1822,7 +1822,7 @@ class bartender_crawler(Star):
                 if not should_connect:
                     yield event.plain_result(result)
                     return
-                if self.config['thread_safe_mode']:
+                if self.config['low_memory_mode']:
                     await bartender_crawler.open_browser_auto(self, False)
                     await bartender_crawler.check_1000page(self)
                     await bartender_crawler.get_all_chats(self)
@@ -2391,7 +2391,7 @@ class bartender_crawler(Star):
     async def initialize(self):
         """异步的插件初始化方法，当插件被加载/启用时会调用。"""
         try:
-            if self.config['thread_safe_mode']:
+            if self.config['low_memory_mode']:
                 await bartender_crawler.open_browser_auto(self, True)
                 await bartender_crawler.check_1000page(self) # 检查是为1000分页
                 await bartender_crawler.get_all_chats(self) # 获取角色列表

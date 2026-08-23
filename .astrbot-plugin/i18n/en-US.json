@@ -8,7 +8,10 @@
     "language": {
       "description": "Reply language",
       "hint": "Language of the plugin's chat replies and page backend messages; independent from the WebUI display language",
-      "labels": ["Simplified Chinese", "English"]
+      "labels": [
+        "Simplified Chinese",
+        "English"
+      ]
     },
     "now_chats_name": {
       "description": "Current character card",
@@ -42,13 +45,10 @@
       "description": "Global persona binding",
       "hint": "When enabled, persona bindings apply globally per QQ account (same persona in all groups); when disabled, bindings are isolated per group. Off by default"
     },
-    "thread_safe_mode": {
-      "description": "Thread-safe mode",
-      "hint": "When enabled, the browser is opened temporarily for each command and closed afterwards (slower, no resident memory). When disabled, the browser stays resident for fast responses. Both modes prevent leftover browser processes; if issues persist, use /酒进程 to clean up"
-    },
     "browser_Visible": {
       "description": "Headless browser",
-      "hint": "Turn off to make the browser visible for debugging and inspecting load state"
+      "hint": "Turn off to make the browser visible for debugging and inspecting load state",
+      "default": true
     },
     "admin_only": {
       "description": "Admin-only mode",
@@ -61,6 +61,10 @@
     "blacklist_groups": {
       "description": "Group blacklist",
       "hint": "Group IDs forbidden from using tavern commands; takes priority over the whitelist. Maintain with /酒权限 黑名单 群号"
+    },
+    "low_memory_mode": {
+      "description": "Low-memory mode",
+      "hint": "When enabled, the browser is opened temporarily for each command and closed afterwards (slower, no resident memory). When disabled, the browser stays resident for fast responses. Both modes prevent leftover browser processes; if issues persist, use /酒进程 to clean up"
     }
   },
   "pages": {
@@ -231,38 +235,38 @@
       "list_header": "Persona list:",
       "list_item": "- {name} ({avatar_id})",
       "none_in_tavern": "No personas in the tavern yet; create one on the tavern page first",
-       "bind_fail": "Failed to switch persona: {name}; send /酒人设 解绑 to unbind and rebind",
-       "bind_usage": "Usage: /酒人设 绑定 [name]",
-       "view_not_found": "Persona not found: {name}",
-       "unknown_sub": "Unknown subcommand. Available: 绑定, 查看, 修改, 解绑; send /酒人设 to view all personas",
-       "field_name": "Persona: {name}",
-       "field_avatar": "Avatar ID: {id}",
-       "field_position": "Position: {pos}",
-       "field_desc": "Description:\n{desc}",
-       "empty_desc": "[empty]"
-     },
-     "worldinfo": {
-       "usage_view": "Usage: /酒世界书 查看 [name]",
-       "usage_toggle": "Usage: /酒世界书 切换 [name]",
-       "not_found": "World info book not found: {name}",
-       "not_found_plain": "World info book not found",
-       "selector_missing": "World info selector missing",
-       "list_fail": "Failed to get world info list",
-       "detail_header": "World info: {name}",
-       "detail_count": "{count} entries",
-       "entry_item": "{i}. [{state}] Keys: {keys}",
-       "state_on": "on",
-       "state_off": "off",
-       "action_on": "enabled",
-       "action_off": "disabled",
-       "toggled": "World info \"{name}\" {action}",
-       "toggle_fail": "Toggle failed: {name}, {msg}",
-       "current_chat": "Current character: {name}",
-       "active_list": "Active world info books: {list}",
-       "all_header": "All world info books:",
-       "empty_list": "No world info books in the tavern"
-     },
-     "status_cmd": {
+      "bind_fail": "Failed to switch persona: {name}; send /酒人设 解绑 to unbind and rebind",
+      "bind_usage": "Usage: /酒人设 绑定 [name]",
+      "view_not_found": "Persona not found: {name}",
+      "unknown_sub": "Unknown subcommand. Available: 绑定, 查看, 修改, 解绑; send /酒人设 to view all personas",
+      "field_name": "Persona: {name}",
+      "field_avatar": "Avatar ID: {id}",
+      "field_position": "Position: {pos}",
+      "field_desc": "Description:\n{desc}",
+      "empty_desc": "[empty]"
+    },
+    "worldinfo": {
+      "usage_view": "Usage: /酒世界书 查看 [name]",
+      "usage_toggle": "Usage: /酒世界书 切换 [name]",
+      "not_found": "World info book not found: {name}",
+      "not_found_plain": "World info book not found",
+      "selector_missing": "World info selector missing",
+      "list_fail": "Failed to get world info list",
+      "detail_header": "World info: {name}",
+      "detail_count": "{count} entries",
+      "entry_item": "{i}. [{state}] Keys: {keys}",
+      "state_on": "on",
+      "state_off": "off",
+      "action_on": "enabled",
+      "action_off": "disabled",
+      "toggled": "World info \"{name}\" {action}",
+      "toggle_fail": "Toggle failed: {name}, {msg}",
+      "current_chat": "Current character: {name}",
+      "active_list": "Active world info books: {list}",
+      "all_header": "All world info books:",
+      "empty_list": "No world info books in the tavern"
+    },
+    "status_cmd": {
       "text": "Current character card: {chat}\nConnection status: {status}\nYour bound persona: {bound}\nCharacter list:\n{chats}"
     },
     "chrome": {
@@ -272,10 +276,10 @@
       "driver_running": "Running",
       "total": "Total system chrome/chromium processes: {total}",
       "detail": "Details: {detail}",
-       "browser": "Plugin browser: {state}",
-       "driver": "Playwright driver: {state}",
-       "stat_fail": "Stats failed: {err}"
-     },
+      "browser": "Plugin browser: {state}",
+      "driver": "Playwright driver: {state}",
+      "stat_fail": "Stats failed: {err}"
+    },
     "reset": {
       "done": "All variables reset"
     },

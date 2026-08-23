@@ -8,6 +8,17 @@
 
 ---
 
+## [v2.0.0-beta] — 2026-08-23
+
+### 新增
+- 配置项 `thread_safe_mode` 更名为 `low_memory_mode`（低内存占用模式）
+- 浏览器无头模式默认开启（`browser_Visible` 默认值由 `false` 改为 `true`）
+
+### 变更
+> **⚠️ 配置迁移提示**：升级后 `thread_safe_mode` 旧键失效，该设置将重置为默认关闭；如需重新启用请在 AstrBot 插件配置中手动开启 `low_memory_mode`。`browser_Visible` 沿用用户已保存值，未修改过的用户将自动生效为无头模式。
+
+---
+
 ## [v1.6.1] — 2026-08-23
 
 ### 新增
@@ -72,9 +83,9 @@
 
 ---
 
-## [v1.0.x] — 早期版本
+## [v1.0.3] — 原项目版本
 
-本项目 fork 自 [dragonuniverse8248/astrbot_plugin_bartender](https://github.com/dragonuniverse8248/astrbot_plugin_bartender)，早期版本在基础对话、角色卡管理、楼层删除等核心功能上与原项目保持一致。
+本项目 fork 自 [dragonuniverse8248/astrbot_plugin_bartender](https://github.com/dragonuniverse8248/astrbot_plugin_bartender)
 
 ---
 
