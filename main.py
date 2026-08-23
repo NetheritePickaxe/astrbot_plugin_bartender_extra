@@ -90,14 +90,17 @@ class bartender_crawler(Star):
 
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
-        self.ST_URL = f"{config['browser_ip']}:{config['browser_port']}" # 获取配置的酒馆地址
+        self.config = config # 初始化配置文件
+        self._migrate_config() # 兼容旧版扁平配置，迁移到分组结构后再读取
+        # 用嵌套路径读取配置（迁移后确保分组存在）
+        tavern = self.config.get('tavern', {})
+        basic = self.config.get('basic', {})
+        self.ST_URL = f"{tavern.get('browser_ip')}:{tavern.get('browser_port')}" # 获取配置的酒馆地址
         self.chats_name_id = {} # 初始化角色卡字典
-        self.default_chat = config['now_chats_name'] # 获取配置文件当前角色
+        self.default_chat = basic.get('now_chats_name') # 获取配置文件当前角色
         self.browser = None # 初始化浏览器对象
         self._browser_lock = asyncio.Lock() # 防止浏览器重复打开/关闭导致的并发问题
         self.status_running = False # 消息状态初始化
-        self.config = config # 初始化配置文件
-        self._migrate_config() # 兼容旧版扁平配置
         self.cache_dir = Path("data/temp/astrbot_plugin_bartender_extra") # 初始化缓存目录路径
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.waiting_sessions = {} # 初始化会话状态字典，用于记录哪些用户正在等待发送图片，格式为: {"群号_用户ID": 过期时间戳}
