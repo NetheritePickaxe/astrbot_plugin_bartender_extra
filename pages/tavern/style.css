@@ -1,6 +1,7 @@
 :root {
   --bg: #171717;
   --panel: #242425;
+  --card: #2a2a2c;
   --text: #dcdcd2;
   --sub: #919191;
   --border: #2d2d2d;
@@ -17,6 +18,7 @@
 [data-theme="light"] {
   --bg: #f5f7fa;
   --panel: #ffffff;
+  --card: #f9fafb;
   --text: #1a1a1a;
   --sub: #6b7280;
   --border: #e5e7eb;
@@ -46,20 +48,21 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  padding: 24px 32px;
+  padding: 36px 48px;
 }
 
 .panel {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  max-width: 640px;
+  gap: 20px;
+  max-width: 1100px;
   width: 100%;
+  margin-inline: auto;
 }
 
 .panel-header h1 {
-  margin: 0 0 8px;
-  font-size: 20px;
+  margin: 0 0 10px;
+  font-size: 28px;
   font-weight: 600;
 }
 
@@ -117,47 +120,83 @@ body {
   color: var(--primary);
 }
 
-.btn-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px;
+.section-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-top: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
 }
 
-.btn {
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card-label {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.card-desc {
+  font-size: 14px;
+  color: var(--sub);
+  line-height: 1.4;
+  flex: 1;
+}
+
+.card-btn {
+  align-self: flex-end;
   border: 1px solid var(--border);
   background: var(--panel);
   color: var(--text);
-  padding: 12px 14px;
+  padding: 9px 20px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 15px;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
-  text-align: center;
 }
 
-.btn:hover {
+.card-btn:hover {
   border-color: var(--primary);
   background: color-mix(in srgb, var(--primary) 10%, var(--bg));
 }
 
-.btn.primary {
+.card-btn.primary {
   background: var(--primary);
   color: var(--primary-text);
   border-color: var(--primary);
 }
 
-.btn.primary:hover {
+.card-btn.primary:hover {
   filter: brightness(1.1);
 }
 
-.btn:disabled {
-  opacity: 0.6;
-  cursor: default;
+.card-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  filter: none;
 }
 
-.btn:disabled:hover {
+.card-btn:disabled:hover {
   border-color: var(--border);
   background: var(--bg);
+  filter: none;
 }
 
 .hidden {

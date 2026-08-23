@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import re, json
+import re, json, base64
 import time, aiohttp, platform
 import subprocess, os, shutil, asyncio, functools, sys, zipfile
 from pathlib import Path
@@ -12,7 +12,7 @@ from astrbot.api import logger, AstrBotConfig
 from astrbot.api.message_components import Node, Nodes, Plain, Image, File, Reply
 
 try:  # 插件 Pages 后端 API（AstrBot >= v4.24.2），旧版降级跳过
-    from astrbot.api.web import json_response, file_response
+    from astrbot.api.web import json_response, file_response, request
     _WEB_API_AVAILABLE = True
 except ImportError:
     _WEB_API_AVAILABLE = False
@@ -120,7 +120,7 @@ os.environ["PWDEBUG"] = "0"
 @register(PLUGIN_NAME,
            "dragonuniverse8248编写 GML5.2 & deepseek指导",
 "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
-                 "1.7.1")
+                  "1.7.2")
 
 
 
@@ -189,6 +189,18 @@ class bartender_crawler(Star):
             self.page_export_data,
             ["POST"],
             "导出整库备份（zip 文件下载）",
+        )
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/tavern/uninstall",
+            self.page_uninstall_tavern,
+            ["POST"],
+            "卸载酒馆（删除所有角色、聊天记录和配置）",
+        )
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/tavern/import-data",
+            self.page_import_tavern,
+            ["POST"],
+            "导入酒馆数据（上传 zip 恢复备份）",
         )
 
     def _check_access(self, event):
@@ -1604,6 +1616,41 @@ class bartender_crawler(Star):
         if path and path.exists():
             return file_response(path, filename=path.name)
         return json_response({"ok": False, "message": msg})
+
+    async def page_uninstall_tavern(self):
+        """卸载酒馆：停止服务并删除整个 SillyTavern 目录"""
+        ok, msg = await self.stop_tavern()
+        st_dir = self.st_dir
+        if st_dir.exists():
+            shutil.rmtree(st_dir, ignore_errors=True)
+        return json_response({"ok": True, "message": "酒馆已卸载"})
+
+    async def page_import_tavern(self):
+        """导入酒馆数据：接收 base64 zip 并解压到 SillyTavern 目录"""
+        st_dir = self.st_dir
+        if not (st_dir / "server.js").exists():
+            return json_response({"ok": False, "message": "酒馆未安装，无法导入数据"})
+        body = await request.json()
+        file_b64 = body.get("file", "") if isinstance(body, dict) else ""
+        if not file_b64:
+            return json_response({"ok": False, "message": "未收到文件数据，请重试"})
+        try:
+            file_bytes = base64.b64decode(file_b64)
+        except Exception:
+            return json_response({"ok": False, "message": "文件数据解码失败，请确认上传文件有效"})
+        tmp = self.cache_dir / f"import_{int(time.time())}.zip"
+        tmp.write_bytes(file_bytes)
+        await self.stop_tavern()
+        try:
+            with zipfile.ZipFile(tmp, "r") as zf:
+                zf.extractall(st_dir)
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+            return json_response({"ok": True, "message": "数据导入完成，请重新启动酒馆"})
+        except Exception as e:
+            return json_response({"ok": False, "message": f"导入失败: {e}"})
 
 
 

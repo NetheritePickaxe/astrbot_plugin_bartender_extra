@@ -1,5 +1,19 @@
 # 更新日志
 
+## [v1.7.2] — 2026-08-24
+
+### 新增
+- WebUI 新增「卸载酒馆」按钮（`POST tavern/uninstall`），确认后删除整个 SillyTavern 目录
+- WebUI 新增「导入数据」按钮（`POST tavern/import-data`），支持上传 zip 恢复备份
+- 新增 `base64` 导入，用于 import-data 后端处理
+
+### 变更
+- 重写 `index.html`：每个功能独立卡片，含标题+简短描述，2 列网格布局
+- 重写 `app.js`：新增 `uninstallTavern()` 和 `importData()` 函数，`showButtons` 扩展新按钮 ID
+- 重写 `style.css`：添加 `.card-grid`、`.card`、`.card-label`、`.card-desc`、`.card-btn` 样式，面板最大宽度 800px
+
+---
+
 ## [v1.7.1] — 2026-08-24
 
 ### 修复

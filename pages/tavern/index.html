@@ -17,14 +17,62 @@
           <button id="copy" class="btn-icon" type="button" title="复制地址">复制</button>
         </div>
       </div>
-      <div id="btn-grid" class="btn-grid">
-        <button id="start" class="btn primary hidden">启动酒馆</button>
-        <button id="install" class="btn primary hidden">安装酒馆</button>
-        <button id="stop" class="btn hidden">关闭酒馆</button>
-        <button id="restart" class="btn hidden">重启酒馆</button>
-        <button id="ext-tag" class="btn hidden">打开外部酒馆</button>
-        <button id="export-data" class="btn hidden">导出整库备份</button>
-        <button id="refresh" class="btn hidden">刷新状态</button>
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-label">启动酒馆</div>
+          <div class="card-desc">启动当前配置的 SillyTavern 服务</div>
+          <button id="start" class="card-btn primary" disabled>启动</button>
+        </div>
+        <div class="card">
+          <div class="card-label">关闭酒馆</div>
+          <div class="card-desc">关闭正在运行的 SillyTavern 服务</div>
+          <button id="stop" class="card-btn" disabled>关闭</button>
+        </div>
+        <div class="card">
+          <div class="card-label">重启酒馆</div>
+          <div class="card-desc">先停止再启动 SillyTavern 服务</div>
+          <button id="restart" class="card-btn" disabled>重启</button>
+        </div>
+      </div>
+      <div class="section-title">服务控制</div>
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-label">打开外部酒馆</div>
+          <div class="card-desc">在新标签页中打开 SillyTavern 界面</div>
+          <button id="ext-tag" class="card-btn" disabled>打开</button>
+        </div>
+        <div class="card">
+          <div class="card-label">刷新状态</div>
+          <div class="card-desc">重新检测酒馆连接与状态信息</div>
+          <button id="refresh" class="card-btn">刷新</button>
+        </div>
+        <div class="card">
+          <div class="card-label">安装酒馆</div>
+          <div class="card-desc">下载并安装最新版 SillyTavern</div>
+          <button id="install" class="card-btn primary" disabled>安装</button>
+        </div>
+      </div>
+      <div class="section-title">安装卸载</div>
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-label">卸载酒馆</div>
+          <div class="card-desc">删除所有角色、聊天记录和配置</div>
+          <button id="uninstall" class="card-btn" disabled>卸载</button>
+        </div>
+      </div>
+      <div class="section-title">数据管理</div>
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-label">导出整库备份</div>
+          <div class="card-desc">打包内置酒馆 data 目录为 zip 下载</div>
+          <button id="export-data" class="card-btn" disabled>导出</button>
+        </div>
+        <div class="card">
+          <div class="card-label">导入数据</div>
+          <div class="card-desc">上传 zip 文件恢复酒馆数据</div>
+          <button id="import-btn" class="card-btn" disabled>导入</button>
+          <input type="file" id="import-file" accept=".zip" hidden />
+        </div>
       </div>
       <div id="message" class="message hidden"></div>
     </div>

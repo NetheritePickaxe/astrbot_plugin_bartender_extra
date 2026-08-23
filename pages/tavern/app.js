@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 let stUrl = "";
 let flashTimer = null;
 let installPollTimer = null;
+let _currentInfo = null;
 
 function applyLang() {
   try {
@@ -17,50 +18,51 @@ function setStatus(text, kind) {
   $("dot").className = "dot " + (kind || "unknown");
 }
 
-function showButtons(ids) {
-  ["start", "install", "stop", "restart", "ext-tag", "export-data", "refresh"].forEach((id) => {
-    const el = $(id);
-    if (el) el.classList.add("hidden");
-  });
-  ids.forEach((id) => {
-    const el = $(id);
-    if (el) el.classList.remove("hidden");
-  });
-}
-
-function showMessage(text, kind) {
-  const m = $("message");
-  m.textContent = text;
-  m.className = "message " + (kind || "info");
-  m.classList.remove("hidden");
-  clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => {
-    m.classList.add("hidden");
-  }, 5000);
-}
+const ALL_BUTTONS = ["start", "install", "stop", "restart", "ext-tag", "export-data", "uninstall", "import-btn", "refresh"];
 
 function applyStatus(info) {
   stUrl = info.st_url || "";
   $("addr").textContent = stUrl || "—";
+  _currentInfo = info;
   if (info.install_status) {
     applyInstallStatus(info.install_status);
     return;
   }
   if (info.reachable) {
     setStatus("酒馆在线", "online");
-    showButtons(["stop", "restart", "ext-tag", "export-data", "refresh"]);
+    setAllButtons({
+      start: false, install: false,
+      stop: true, restart: true, "ext-tag": true,
+      export-data: true, uninstall: true, "import-btn": true,
+      refresh: true,
+    });
   } else {
     setStatus("酒馆未连接", "offline");
     if (info.has_bundled_st) {
-      showButtons(["start", "refresh"]);
+      setAllButtons({
+        start: true, install: false,
+        stop: false, restart: false, "ext-tag": false,
+        export-data: true, uninstall: true, "import-btn": true,
+        refresh: true,
+      });
     } else {
-      showButtons(["install", "refresh"]);
+      setAllButtons({
+        start: false, install: true,
+        stop: false, restart: false, "ext-tag": false,
+        export-data: false, uninstall: false, "import-btn": false,
+        refresh: true,
+      });
     }
   }
 }
 
 function applyInstallStatus(status) {
-  showButtons([]);
+  setAllButtons({
+    start: false, install: false,
+    stop: false, restart: false, "ext-tag": false,
+    export-data: false, uninstall: false, "import-btn": false,
+    refresh: true,
+  });
   if (status === "downloading" || status === "starting") {
     setStatus("安装中…", "unknown");
     showMessage("正在下载酒馆…", "info");
@@ -74,12 +76,12 @@ function applyInstallStatus(status) {
     stopInstallPolling();
     setStatus("安装完成", "online");
     showMessage("SillyTavern 已安装，可点击「启动酒馆」启动。", "success");
-    showButtons(["start"]);
+    applyStatus(_currentInfo || { st_url: stUrl, reachable: true, has_bundled_st: true });
   } else if (typeof status === "string" && status.startsWith("failed")) {
     stopInstallPolling();
     setStatus("安装失败", "offline");
     showMessage(status, "error");
-    showButtons(["install"]);
+    applyStatus({ st_url: stUrl, reachable: false, has_bundled_st: false });
   }
 }
 
@@ -120,6 +122,27 @@ async function refreshStatus() {
   }
 }
 
+function setAllButtons(states) {
+  ALL_BUTTONS.forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    const enabled = states[id] !== false;
+    el.disabled = !enabled;
+    el.classList.toggle("hidden", false);
+  });
+}
+
+function showMessage(text, kind) {
+  const m = $("message");
+  m.textContent = text;
+  m.className = "message " + (kind || "info");
+  m.classList.remove("hidden");
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => {
+    m.classList.add("hidden");
+  }, 5000);
+}
+
 async function startTavern() {
   const btn = $("start");
   btn.disabled = true;
@@ -136,7 +159,7 @@ async function startTavern() {
     showMessage(e.message || "启动失败", "error");
   } finally {
     btn.disabled = false;
-    btn.textContent = "启动酒馆";
+    btn.textContent = "启动";
   }
 }
 
@@ -157,7 +180,7 @@ async function installTavern() {
     showMessage(e.message || "安装失败", "error");
   } finally {
     btn.disabled = false;
-    btn.textContent = "安装酒馆";
+    btn.textContent = "安装";
   }
 }
 
@@ -177,7 +200,7 @@ async function stopTavern() {
     showMessage(e.message || "关闭失败", "error");
   } finally {
     btn.disabled = false;
-    btn.textContent = "关闭酒馆";
+    btn.textContent = "关闭";
   }
 }
 
@@ -197,7 +220,7 @@ async function restartTavern() {
     showMessage(e.message || "重启失败", "error");
   } finally {
     btn.disabled = false;
-    btn.textContent = "重启酒馆";
+    btn.textContent = "重启";
   }
 }
 
@@ -208,7 +231,7 @@ async function exportData() {
   try {
     const r = await bridge.apiPost("tavern/export-data", {});
     if (r && r.ok) {
-      showMessage("导出完成", "success");
+      showMessage("导出完成，文件已开始下载", "success");
     } else {
       showMessage((r && r.message) || "导出失败", "error");
     }
@@ -216,9 +239,62 @@ async function exportData() {
     showMessage(e.message || "导出失败", "error");
   } finally {
     btn.disabled = false;
-    btn.textContent = "导出整库备份";
+    btn.textContent = "导出";
   }
 }
+
+async function uninstallTavern() {
+  if (!confirm("确定要卸载酒馆？\n\n所有角色、聊天记录、配置将被永久删除，此操作不可撤销。")) return;
+  const btn = $("uninstall");
+  btn.disabled = true;
+  btn.textContent = "卸载中…";
+  try {
+    const r = await bridge.apiPost("tavern/uninstall", {});
+    if (r && r.ok) {
+      showMessage("酒馆已卸载，可点击「安装酒馆」重新安装", "success");
+      await refreshStatus();
+    } else {
+      showMessage((r && r.message) || "卸载失败", "error");
+    }
+  } catch (e) {
+    showMessage(e.message || "卸载失败", "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "卸载";
+  }
+}
+
+async function importData() {
+  $("import-file").click();
+}
+
+$("import-file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  $("import-file").value = "";
+  const btn = $("import-btn");
+  btn.disabled = true;
+  btn.textContent = "导入中…";
+  try {
+    const data = await file.arrayBuffer();
+    const bytes = new Uint8Array(data);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const b64 = btoa(binary);
+    const r = await bridge.apiPost("tavern/import-data", { file: b64 });
+    if (r && r.ok) {
+      showMessage(r.message || "数据导入完成，请重新启动酒馆", "success");
+      await refreshStatus();
+    } else {
+      showMessage((r && r.message) || "导入失败", "error");
+    }
+  } catch (err) {
+    showMessage(err.message || "导入失败", "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "导入";
+  }
+});
 
 async function copyAddr() {
   if (!stUrl) return;
@@ -255,14 +331,14 @@ function bind() {
   $("install").addEventListener("click", installTavern);
   $("stop").addEventListener("click", stopTavern);
   $("restart").addEventListener("click", restartTavern);
+  $("export-data").addEventListener("click", exportData);
+  $("uninstall").addEventListener("click", uninstallTavern);
+  $("import-btn").addEventListener("click", importData);
   $("copy").addEventListener("click", copyAddr);
   if ($("ext-tag")) {
     $("ext-tag").addEventListener("click", () => {
       if (stUrl) window.open(stUrl, "_blank", "noopener");
     });
-  }
-  if ($("export-data")) {
-    $("export-data").addEventListener("click", exportData);
   }
 }
 
