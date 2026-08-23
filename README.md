@@ -4,7 +4,7 @@
 
 _✨ [AstrBot](https://github.com/AstrBotDevs/AstrBot) 酒馆（SillyTavern）交互插件 ✨_
 
-[![Version](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2FNetheritePickaxe%2Fastrbot_plugin_bartender_extra%2Fmain%2Fmetadata.yaml&query=%24.version&label=%E7%89%88%E6%9C%AC&color=blueviolet)](https://github.com/NetheritePickaxe/astrbot_plugin_bartender_extra/releases)
+[![Version](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2FNetheritePickaxe%2Fastrbot_plugin_bartender_extra%2Fmain%2Fmetadata.yaml&query=%24.version&label=%E7%89%88%E6%9C%AC&color=blueviolet)](https://github.com/NetheritePickaxe/astrbot_plugin_bartender_extra/blob/main/CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![AstrBot](https://img.shields.io/badge/AstrBot-3.4%2B-orange.svg)](https://github.com/Soulter/AstrBot)
