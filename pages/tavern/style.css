@@ -120,6 +120,67 @@ body {
   background: transparent;
 }
 
+/* 分体按钮 */
+.split {
+  display: inline-flex;
+  position: relative;
+}
+.split-main {
+  border-radius: 6px 0 0 6px;
+}
+.split-caret {
+  border-radius: 0 6px 6px 0;
+  border-left: none;
+  padding: 6px 8px;
+  font-size: 11px;
+}
+.split-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 100px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  z-index: 20;
+  overflow: hidden;
+}
+.split-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.split-menu button:hover {
+  background: var(--bg);
+}
+.split-menu button:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
+/* 外部酒馆徽章 */
+.ext-tag {
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--sub);
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.ext-tag:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
 .btn:disabled {
   opacity: 0.6;
   cursor: default;

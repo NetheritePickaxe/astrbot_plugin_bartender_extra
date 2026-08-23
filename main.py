@@ -66,6 +66,7 @@ class bartender_crawler(Star):
         self.browser = None # 初始化浏览器类
         self._browser_lock = asyncio.Lock() # 浏览器启动/关闭互斥锁，防止并发重复启动出多个浏览器
         self.status_running = False # 消息状态初始化
+        self._st_proc = None # 酒馆 node 进程句柄（插件启动时保存，用于后续停止/重启）
         self.cache_dir = Path("data/temp/astrbot_plugin_bartender_extra") # 初始化本地缓存文件夹路径
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.waiting_sessions = {} # 初始化会话状态字典，用于记录哪些用户正在等待发送图片，格式为: {"群号_用户ID": 过期时间戳}
@@ -100,6 +101,18 @@ class bartender_crawler(Star):
             self.page_install_tavern,
             ["POST"],
             "下载并安装 SillyTavern 到插件目录",
+        )
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/tavern/stop",
+            self.page_stop_tavern,
+            ["POST"],
+            "停止插件目录中的酒馆服务",
+        )
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/tavern/restart",
+            self.page_restart_tavern,
+            ["POST"],
+            "重启插件目录中的酒馆服务（先停后启）",
         )
 
     def _check_access(self, event):
@@ -1311,7 +1324,10 @@ class bartender_crawler(Star):
                 popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
             else:
                 popen_kwargs["start_new_session"] = True
-            subprocess.Popen([node_path, "server.js"], **popen_kwargs)
+            proc = subprocess.Popen([node_path, str(st_dir / "server.js")], **popen_kwargs)
+            self._st_proc = proc
+            proc.wait()
+            self._st_proc = None
         except Exception as e:
             return False, f"""启动失败: {e}"""
         # 等待就绪（最长约 60 秒）
@@ -1324,6 +1340,80 @@ class bartender_crawler(Star):
             except Exception:
                 await asyncio.sleep(2)
         return False, f"""酒馆启动超时，请查看日志: {log_path}"""
+
+    async def stop_tavern(self):
+        """停止插件目录内启动的 SillyTavern 服务进程；返回 (ok, msg)"""
+        # 优先：已跟踪进程直接终止
+        proc = getattr(self, "_st_proc", None)
+        if proc is not None and proc.poll() is None:
+            try:
+                if os.name == "nt":
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                else:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except Exception:
+                        proc.kill()
+            except Exception as e:
+                logger.warning(f"stop_tavern: 终止句柄进程异常: {e}")
+            self._st_proc = None
+            return True, """酒馆已关闭"""
+        # 兜底：按配置端口查杀监听进程（仅在内置酒馆场景下调用）
+        try:
+            parsed = urlparse(self.ST_URL)
+            host = parsed.hostname or "127.0.0.1"
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        except Exception:
+            host, port = "127.0.0.1", 8000
+        try:
+            if os.name == "nt":
+                import re as _re
+                out = subprocess.run(
+                    ["netstat", "-ano"], capture_output=True, text=True, timeout=5,
+                ).stdout
+                pid = None
+                for line in out.splitlines():
+                    if f":{port}" in line and "LISTENING" in line:
+                        parts = line.strip().split()
+                        if parts:
+                            pid = parts[-1]
+                            break
+                if pid:
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", pid],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                    return True, f"""已通过端口 {port} 定位并关闭酒馆进程"""
+            else:
+                import shlex
+                subprocess.run(
+                    ["fuser", "-k", f"{port}/tcp"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5,
+                )
+                return True, f"""已通过端口 {port} 关闭酒馆进程"""
+        except Exception as e:
+            logger.warning(f"stop_tavern 兜底查杀异常: {e}")
+        return False, """未找到酒馆进程，可能尚未启动或已被手动关闭"""
+
+    async def restart_tavern(self):
+        """重启酒馆：先停后启；返回 (ok, msg)"""
+        await self.stop_tavern()
+        await asyncio.sleep(2)
+        return await self.start_tavern()
+
+    async def page_stop_tavern(self):
+        """停止酒馆服务（供 WebUI 分体按钮调用）"""
+        ok, msg = await self.stop_tavern()
+        return json_response({"ok": ok, "message": msg})
+
+    async def page_restart_tavern(self):
+        """重启酒馆服务（供 WebUI 分体按钮调用）"""
+        ok, msg = await self.restart_tavern()
+        return json_response({"ok": ok, "message": msg})
 
 
 

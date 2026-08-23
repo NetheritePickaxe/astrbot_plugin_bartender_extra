@@ -17,6 +17,15 @@
         <button id="copy" class="btn ghost" type="button" title="复制地址">复制</button>
       </div>
       <button id="refresh" class="btn" type="button">刷新状态</button>
+      <button id="ext-tag" class="btn ext-tag hidden" type="button" title="在新标签页打开酒馆地址">外部酒馆</button>
+      <div id="stop-wrap" class="split hidden">
+        <button id="stop-btn" class="btn primary split-main" type="button">关闭酒馆</button>
+        <button id="stop-menu-btn" class="btn primary split-caret" type="button" aria-label="更多操作">▾</button>
+        <div id="stop-menu" class="split-menu hidden">
+          <button type="button" data-act="stop">关闭</button>
+          <button type="button" data-act="restart">重启</button>
+        </div>
+      </div>
       <button id="install" class="btn primary hidden" type="button">安装酒馆</button>
       <button id="start" class="btn primary hidden" type="button">启动酒馆</button>
     </div>
