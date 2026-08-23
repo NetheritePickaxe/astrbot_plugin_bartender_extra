@@ -95,7 +95,7 @@ def _build_card_png(name, description, first_mes):
 CHAT_MODE_COMMANDS = frozenset({
     "酒", "酒切换", "酒删除", "酒加卡", "酒删卡", "酒重生成", "酒续写", "酒备选",
     "酒中断", "酒停止", "酒新建", "酒导出", "酒统计", "酒查看",
-    "酒人设", "酒状态", "酒帮助", "酒启动", "酒重置",
+    "酒人设", "酒状态", "酒帮助", "酒启动", "酒重置", "酒重启",
     "酒进程", "酒开始", "酒结束", "酒权限", "酒世界书",
 })
 # 注：酒人设 修改 / 酒人设 解绑 为 酒人设 子命令，首词「酒人设」已在集合内
@@ -1964,6 +1964,37 @@ class bartender_crawler(Star):
                 yield event.plain_result(f"{result}{"""，已自动连接"""}")
             except Exception as e:
                 logger.error(f"酒启动指令异常: {e}")
+                yield event.plain_result("""指令执行异常，请稍后重试""")
+            finally:
+                await bartender_crawler.close_browser_auto(self)
+                self.status_running = True
+        else:
+            yield event.plain_result("""正在Shake~，请稍作等待""")
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("酒重启")
+    async def command_restart_tavern(self, event: AstrMessageEvent):
+        """重启目录中的酒馆（先停止后启动），完成后自动连接浏览器"""
+        if self.status_running:
+            self.status_running = False
+            try:
+                await bartender_crawler.react_message(self, event)
+                should_connect, result = await bartender_crawler.restart_tavern(self)
+                if not should_connect:
+                    yield event.plain_result(result)
+                    return
+                if self.config['tavern']['low_memory_mode']:
+                    await bartender_crawler.open_browser_auto(self, False)
+                    await bartender_crawler.check_1000page(self)
+                    await bartender_crawler.get_all_chats(self)
+                else:
+                    await bartender_crawler.initialize_browser(self)
+                    await bartender_crawler.check_1000page(self)
+                    await bartender_crawler.get_all_chats(self)
+                    await bartender_crawler.switch_chats(self, self.config['basic']['now_chats_name'])
+                yield event.plain_result(f"{result}{"""，已自动连接"""}")
+            except Exception as e:
+                logger.error(f"酒重启指令异常: {e}")
                 yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)

@@ -184,6 +184,7 @@ git clone https://github.com/NetheritePickaxe/astrbot_plugin_bartender_extra
 | `/酒帮助`           | `tavern_help`     | 无                 | 显示所有指令的帮助信息 |
 | `/酒启动`           | `tavern_start`    | 🔒 管理员          | 启动插件目录中的 SillyTavern 酒馆服务，启动后自动连接浏览器 |
 | `/酒停止`           | `tavern_close`    | 🔒 管理员          | 完全关闭：停止酒馆主程序（node 进程）、插件浏览器，并清理后台所有 Chrome/Chromium 进程 |
+| `/酒重启`           | `tavern_restart`  | 🔒 管理员          | 重启插件目录中的 SillyTavern（先停止后启动），完成后自动连接浏览器 |
 | `/酒重置`           | `tavern_reset`    | 🔒 管理员          | 重置插件所有全局变量，恢复默认角色，重新获取角色列表 |
 | `/酒进程` 或 `/酒进程 停止` | `tavern_process` | 🔒 管理员     | 查看当前 Chrome/Chromium 进程数量与插件浏览器状态；带「停止」仅关闭浏览器进程并清理残留（不动酒馆主程序） |
 | `/酒权限`           | `tavern_permission` | 🔒 管理员        | 管理酒命令访问权限：`管理 开\|关`（管理员模式）、`白名单 [群号\|移除 群号]`、`黑名单 [群号\|移除 群号]` |
