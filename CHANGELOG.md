@@ -1,5 +1,12 @@
 # 更新日志
 
+## [v1.6.10] — 2026-08-24
+
+### 修复
+- 修复「内嵌酒馆不渲染」（`X-Frame-Options: SAMEORIGIN` 复活）的回归问题：v1.6.8 `_patch_st_helmet` 的「frameguard 已存在」分支把 `extras + "}));"` 作为替换内容，**丢弃**了 `frameguard: false,` 行，导致 iframe 再次被拦截。现改用正则替换整个 `helmet({...})` 块，确保四项（frameguard/CORP/COOP/OAC）全部关闭，且幂等自愈
+
+---
+
 ## [v1.6.9] — 2026-08-24
 
 ### 修复

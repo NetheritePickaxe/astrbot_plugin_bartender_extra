@@ -120,7 +120,7 @@ os.environ["PWDEBUG"] = "0"
 @register(PLUGIN_NAME,
            "dragonuniverse8248编写 GML5.2 & deepseek指导",
               "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
-                "1.6.9")
+                "1.6.10")
 
 
 
@@ -1433,21 +1433,27 @@ class bartender_crawler(Star):
         except Exception as e:
             logger.warning(f"读取 ST server-main.js 失败: {e}")
             return
-        if "crossOriginResourcePolicy" in text:
+        full = ("app.use(helmet({\n"
+                "    contentSecurityPolicy: false,\n"
+                "    frameguard: false,\n"
+                "    crossOriginResourcePolicy: false,\n"
+                "    crossOriginOpenerPolicy: false,\n"
+                "    originAgentCluster: false,\n"
+                "}));")
+        if full in text:
             return
-        extras = ("    crossOriginResourcePolicy: false,\n"
-                  "    crossOriginOpenerPolicy: false,\n"
-                  "    originAgentCluster: false,\n")
-        if "    frameguard: false,\n}));" in text:
-            text = text.replace("    frameguard: false,\n}));", extras + "}));", 1)
-        elif "    contentSecurityPolicy: false,\n}));" in text:
-            text = text.replace("    contentSecurityPolicy: false,\n}));",
-                                "    contentSecurityPolicy: false,\n    frameguard: false,\n" + extras + "}));", 1)
-        else:
+        import re
+        new_text = re.sub(
+            r"app\.use\(helmet\(\{[^}]*\}\)\);",
+            full,
+            text,
+            count=1,
+        )
+        if new_text == text:
             logger.warning("未匹配到 ST helmet 配置，跳过补丁（ST 版本可能已变更）")
             return
         try:
-            f.write_text(text, encoding="utf-8")
+            f.write_text(new_text, encoding="utf-8")
             logger.info("已放宽 ST helmet 安全头（frameguard/CORP/COOP/OAC off），允许面板沙箱 iframe 内嵌")
         except Exception as e:
             logger.warning(f"修补 ST helmet 失败: {e}")
