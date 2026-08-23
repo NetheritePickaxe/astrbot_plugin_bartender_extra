@@ -8,13 +8,20 @@
 
 ---
 
-## [v2.0.0-beta] — 2026-08-23
+## [v1.6.2] — 2026-08-23
+
+### 移除
+- 完全移除 i18n 支持（`.astrbot-plugin/i18n/` 目录、`self.t()` / `_t_status()` 方法、`_STATUS_TEXT_KEYS` / `_RENAME_ERR_KEYS` 映射、`language` 配置项）；所有回复文案硬编码为简体中文
+- 配置项 `thread_safe_mode` 更名为 `low_memory_mode`（低内存占用模式）；老用户需重新配置
+- 浏览器无头模式默认开启（`browser_Visible` 默认值由 `false` 改为 `true`）
+- README 指令列表合并英文别名列，移除独立别名章节
+
+### 修复
+- 修复 metadata.yaml `display_name` 回归（恢复「调酒师-增强」）与 `short_desc` 缺失
 
 ### 新增
-- 配置项 `thread_safe_mode` 更名为 `low_memory_mode`（低内存占用模式）
-- 浏览器无头模式默认开启（`browser_Visible` 默认值由 `false` 改为 `true`）
+- README 添加动态版本徽章（读 metadata.yaml 自动同步）
 
-### 变更
 > **⚠️ 配置迁移提示**：升级后 `thread_safe_mode` 旧键失效，该设置将重置为默认关闭；如需重新启用请在 AstrBot 插件配置中手动开启 `low_memory_mode`。`browser_Visible` 沿用用户已保存值，未修改过的用户将自动生效为无头模式。
 
 ---

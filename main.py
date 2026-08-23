@@ -19,46 +19,8 @@ except ImportError:
 
 PLUGIN_NAME = "astrbot_plugin_bartender_extra"
 
-_I18N_DIR = Path(__file__).parent / ".astrbot-plugin" / "i18n"
-
-def _load_i18n_file(lang: str) -> dict:
-    """加载 .astrbot-plugin/i18n/{lang}.json；失败或非对象时返回空字典"""
-    path = _I18N_DIR / f"{lang}.json"
-    try:
-        if path.exists():
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                return data
-    except Exception as e:
-        logger.error(f"加载国际化文件失败 ({path.name}): {e}")
-    return {}
-
-# 内部方法返回的状态哨兵字符串 -> i18n key（展示给用户时翻译）
-_STATUS_TEXT_KEYS = {
-    "正常": "chat.status.ok",
-    "错误": "chat.status.error",
-    "无角色卡": "chat.status.no_char",
-    "浏览器未连接": "chat.status.browser_down",
-    "无生成中": "chat.status.no_generation",
-    "已停止": "chat.status.stopped",
-    "无更多回复": "chat.status.no_more_swipes",
-    "合并消息为空": "chat.status.empty_message",
-    "禁止输入为空": "chat.status.empty_input",
-    "打开人设面板失败": "chat.persona.panel_open_fail",
-    "未找到人设": "chat.persona.not_found",
-    "已启用": "chat.worldinfo.action_on",
-    "已停用": "chat.worldinfo.action_off",
-    "未找到世界书": "chat.worldinfo.not_found_plain",
-    "世界书选择器缺失": "chat.worldinfo.selector_missing",
-}
-# 重命名角色卡 REST 返回码 -> i18n key
-_RENAME_ERR_KEYS = {
-    "not_found": "chat.rename.not_found",
-    "request_failed": "chat.rename.request_failed",
-}
-# 引用定位兼容楼层前缀（随回复语言变化）
-_FLOOR_PREFIX_RE = re.compile(r"^(当前共\d+楼层|\d+ floors? total)$")
+# 引用定位兼容楼层前缀
+_FLOOR_PREFIX_RE = re.compile(r"^当前共\d+楼层$")
 
 # 聊天模式下放行的本插件指令名集合（首词命中则不拦截，交给指令分发）
 CHAT_MODE_COMMANDS = frozenset({
@@ -89,7 +51,7 @@ os.environ["PWDEBUG"] = "0"
 @register(PLUGIN_NAME,
            "dragonuniverse8248编写 GML5.2 & deepseek指导",
             "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
-              "1.6.1")
+              "1.6.2")
 
 
 
@@ -104,8 +66,6 @@ class bartender_crawler(Star):
         self._browser_lock = asyncio.Lock() # 浏览器启动/关闭互斥锁，防止并发重复启动出多个浏览器
         self.status_running = False # 消息状态初始化
         self.config = config # 初始化配置文件
-        self._i18n_requested = _load_i18n_file(str(config.get('language', 'zh-CN') or 'zh-CN')) # 配置语言（缺失回退中文）
-        self._i18n_fallback = _load_i18n_file("zh-CN") # 源语言兜底
         self.cache_dir = Path("data/temp/astrbot_plugin_bartender_extra") # 初始化本地缓存文件夹路径
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.waiting_sessions = {} # 初始化会话状态字典，用于记录哪些用户正在等待发送图片，格式为: {"群号_用户ID": 过期时间戳}
@@ -117,37 +77,6 @@ class bartender_crawler(Star):
         self.persona_bindings = self._load_persona_bindings() # 用户人设绑定字典，格式为: {"群号_用户ID": {"name": 人设名, "avatar_id": 人设头像ID}}
         self._st_install_status = None # 酒馆安装状态：None | "downloading" | "extracting" | "installing_deps" | "done" | "failed: <msg>"
         self._register_web_apis(context)
-
-    @staticmethod
-    def _i18n_lookup(data: dict, key: str):
-        """按点号路径在 locale 字典中取词；值非字符串/数组视为缺失"""
-        cur = data
-        for part in key.split("."):
-            if not isinstance(cur, dict) or part not in cur:
-                return None
-            cur = cur[part]
-        if isinstance(cur, list):
-            return "\n".join(str(x) for x in cur)
-        return cur if isinstance(cur, str) else None
-
-    def t(self, key: str, **kwargs) -> str:
-        """国际化取词：按配置语言读取，缺失回退中文源文案，仍缺失返回 key 本身"""
-        text = self._i18n_lookup(self._i18n_requested, key)
-        if text is None:
-            text = self._i18n_lookup(self._i18n_fallback, key)
-        if text is None:
-            return key
-        if kwargs:
-            try:
-                text = text.format(**kwargs)
-            except (KeyError, IndexError, ValueError):
-                pass # 占位符不匹配时原样返回，避免崩指令
-        return text
-
-    def _t_status(self, status: str) -> str:
-        """内部状态哨兵字符串 -> 用户可见翻译；非哨兵原样返回"""
-        key = _STATUS_TEXT_KEYS.get(status)
-        return self.t(key) if key else status
 
     def _register_web_apis(self, context):
         """注册插件 Pages 后端 API（旧版 AstrBot 无此能力时降级跳过）"""
@@ -180,11 +109,11 @@ class bartender_crawler(Star):
         blacklist = [str(x) for x in (self.config.get('blacklist_groups') or [])]
         whitelist = [str(x) for x in (self.config.get('whitelist_groups') or [])]
         if gid_s and gid_s in blacklist: # 群黑名单优先（私聊不适用群名单）
-            return False, self.t("chat.access.blacklisted")
+            return False, """本群已被加入黑名单，禁止使用酒命令"""
         if gid_s and whitelist and gid_s not in whitelist: # 白名单非空时仅允许列内群聊
-            return False, self.t("chat.access.not_whitelisted")
+            return False, """本群不在白名单内，禁止使用酒命令"""
         if self.config.get('admin_only') and not event.is_admin(): # 管理员模式
-            return False, self.t("chat.access.admin_only")
+            return False, """管理员模式已开启，该命令仅管理员可用"""
         return True, ""
 
     async def page_info(self):
@@ -219,7 +148,7 @@ class bartender_crawler(Star):
     async def page_install_tavern(self):
         """下载并安装 SillyTavern（供 WebUI 一键安装按钮调用）"""
         if self._st_install_status is not None:
-            return json_response({"ok": False, "message": self.t("pages.tavern.already_installing", "正在安装中，请等待完成")})
+            return json_response({"ok": False, "message": """正在安装中，请等待完成"""})
         ok, msg = await self.install_tavern()
         if ok:
             asyncio.create_task(self._install_tavern_bg())
@@ -229,12 +158,12 @@ class bartender_crawler(Star):
         """启动酒馆安装流程（后台 subprocess 调用 download_sillytavern.py）"""
         st_dir = self.plugin_dir / "SillyTavern"
         if (st_dir / "server.js").exists():
-            return False, self.t("pages.tavern.install_already", "酒馆已安装")
+            return False, """酒馆已安装"""
         node_path = shutil.which("node")
         if not node_path:
-            return False, self.t("pages.tavern.install_no_node", "未检测到 Node.js，请先安装 Node.js 18+")
+            return False, """未检测到 Node.js，请先安装 Node.js 18+"""
         self._st_install_status = "starting"
-        return True, self.t("pages.tavern.installing", "安装中…")
+        return True, """安装中…"""
 
     async def _install_tavern_bg(self):
         """后台执行：subprocess 调用 download_sillytavern.py，逐行读 stdout 更新状态"""
@@ -679,7 +608,7 @@ class bartender_crawler(Star):
         if not ok and bound.get("name") and target != bound.get("name"):
             ok, _ = await self.switch_persona(bound.get("name")) # 头像ID失效则退回按名称匹配
         if not ok:
-            return False, self.t("chat.persona.bind_fail", name=bound.get('name'))
+            return False, f"""人设切换失败：{(bound.get('name'))}，请发送 /酒人设 解绑 解除后重新绑定"""
         return True, ""
 
     async def list_world_infos(self):
@@ -787,7 +716,7 @@ class bartender_crawler(Star):
                 nodes_list.append(Node(
                     uin = bot_id,
                     name = self.config['now_chats_name'],
-                    content = [Plain(self.t("chat.floor.truncated"))]
+                    content = [Plain("""（内容过长，已截断）""")]
                 ))
             forward_message = Nodes(nodes=nodes_list)
             return forward_message
@@ -1040,7 +969,7 @@ class bartender_crawler(Star):
             )
             if not result or not result.get("ok"):
                 code = (result or {}).get("code") or "error"
-                return False, self.t(_RENAME_ERR_KEYS.get(code, "chat.status.error"))
+                return False, "重命名请求失败" if code == "request_failed" else "未找到角色卡" if code == "not_found" else "错误"
             # REST 改名后前端 DOM 角色列表已过期，重载页面以同步
             try:
                 await self.page.reload(wait_until="domcontentloaded")
@@ -1338,7 +1267,7 @@ class bartender_crawler(Star):
                         detail.append(f"{name}: {n}")
                     total += n
         except Exception as e:
-            return -1, [self.t("chat.chrome.stat_fail", err=e)]
+            return -1, [f"""统计失败: {e}"""]
         return total, detail
 
     async def start_tavern(self):
@@ -1351,19 +1280,19 @@ class bartender_crawler(Star):
             _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=3)
             writer.close()
             await writer.wait_closed()
-            return True, self.t("chat.tavern.already_running")
+            return True, """酒馆已在运行"""
         except Exception:
             pass
         # 定位目录
         st_dir = self.plugin_dir / "SillyTavern"
         if not (st_dir / "server.js").exists():
-            return False, self.t("chat.tavern.not_found")
+            return False, """未在插件目录找到 SillyTavern，请先运行 download_sillytavern 脚本下载"""
         # Node 检查
         node_path = shutil.which("node")
         if not node_path:
             if os.name == "nt":
-                return False, self.t("chat.tavern.no_node_win")
-            return False, self.t("chat.tavern.no_node_unix")
+                return False, """未检测到 Node.js，SillyTavern 需要 Node.js 18 或更高版本。请安装: winget install OpenJS.NodeJS.LTS"""
+            return False, """未检测到 Node.js，SillyTavern 需要 Node.js 18 或更高版本。请通过 nvm 或官网安装"""
         # 后台启动
         log_path = self.cache_dir / "sillytavern.log"
         try:
@@ -1384,17 +1313,17 @@ class bartender_crawler(Star):
                 popen_kwargs["start_new_session"] = True
             subprocess.Popen([node_path, "server.js"], **popen_kwargs)
         except Exception as e:
-            return False, self.t("chat.tavern.start_failed", error=e)
+            return False, f"""启动失败: {e}"""
         # 等待就绪（最长约 60 秒）
         for _ in range(30):
             try:
                 _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=2)
                 writer.close()
                 await writer.wait_closed()
-                return True, self.t("chat.tavern.started")
+                return True, """酒馆已启动"""
             except Exception:
                 await asyncio.sleep(2)
-        return False, self.t("chat.tavern.timeout", path=log_path)
+        return False, f"""酒馆启动超时，请查看日志: {log_path}"""
 
 
 
@@ -1414,7 +1343,7 @@ class bartender_crawler(Star):
         """关闭插件浏览器并清理后台所有 chrome/chromium 进程"""
         await bartender_crawler.close_browser(self) # 先优雅关闭插件自己的浏览器
         await bartender_crawler.kill_chrome_process(self) # 再兜底清理残留进程
-        yield event.plain_result(self.t("chat.close.done"))
+        yield event.plain_result("""已关闭浏览器并清理所有后台 Chrome/Chromium 进程""")
 
     @filter.command("酒")
     @_access_required
@@ -1434,27 +1363,27 @@ class bartender_crawler(Star):
                     user_message = ' '.join(user_message.split()[1:])
                     send_result = await bartender_crawler.send_message(self, user_message) # 发送消息至酒馆
                     if send_result != "正常":
-                        yield event.plain_result(self.t("chat.send.failed", status=self._t_status(send_result)))
+                        yield event.plain_result(f"""发送失败: {(send_result)}""")
                         return
                     message_text = await bartender_crawler.get_new_message_text(self) # 获取最新的消息文本
                     remaining = await bartender_crawler.get_now_floor(self,0) # 获取当前楼层数
                     if message_text:
                         if self.config.get('show_floor_count'):
-                            yield event.plain_result(f"{self.t('chat.floor.count', count=remaining)}\n\n{message_text}")
+                            yield event.plain_result(f"{f"""当前共{remaining}楼层"""}\n\n{message_text}")
                         else:
                             yield event.plain_result(message_text)
                     else:
-                        yield event.plain_result(self.t("chat.status.empty_message"))
+                        yield event.plain_result("""合并消息为空""")
                 else:
-                    yield event.plain_result(self.t("chat.status.empty_input"))
+                    yield event.plain_result("""禁止输入为空""")
             except Exception as e:
                 logger.error(f"酒指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.shake"))
+            yield event.plain_result("""正在Shake~，请稍作等待""")
 
     @filter.command("酒人设")
     @_access_required
@@ -1470,25 +1399,25 @@ class bartender_crawler(Star):
                 if len(tokens) > 1: # 子命令模式
                     if tokens[1] == "绑定": # /酒人设 绑定 [名字]
                         if len(tokens) < 3:
-                            yield event.plain_result(self.t("chat.persona.bind_usage"))
+                            yield event.plain_result("""请输入：/酒人设 绑定 [人设名]""")
                             return
                         persona_name = " ".join(tokens[2:])
                         ok, avatar_id = await bartender_crawler.switch_persona(self, persona_name)
                         if ok:
                             self.persona_bindings[session_key] = {"name": persona_name, "avatar_id": avatar_id}
                             self._save_persona_bindings()
-                            yield event.plain_result(self.t("chat.persona.bound", name=persona_name))
+                            yield event.plain_result(f"""已绑定人设：{persona_name}""")
                         else:
-                            yield event.plain_result(self.t("chat.persona.not_found_with_hint", name=persona_name))
+                            yield event.plain_result(f"""未找到人设：{persona_name}，发送 /酒人设 查看全部人设""")
                         return
                     if tokens[1] == "查看" and len(tokens) >= 3: # /酒人设 查看 [名字] → 查看人设详情
                         persona_name = " ".join(tokens[2:])
                         if not await bartender_crawler.open_persona_panel(self):
-                            yield event.plain_result(self._t_status("打开人设面板失败"))
+                            yield event.plain_result("打开人设面板失败")
                             return
                         try:
                             if not await bartender_crawler._select_persona_block(self, persona_name):
-                                yield event.plain_result(self.t("chat.persona.view_not_found", name=persona_name))
+                                yield event.plain_result(f"""未找到人设：{persona_name}""")
                                 return
                             desc = await self.page.locator("#persona_description").input_value()
                             display_name = await self.page.locator("#your_name").inner_text()
@@ -1498,18 +1427,19 @@ class bartender_crawler(Star):
                                 avatar_id = await blocks.first.get_attribute("data-avatar-id") or ""
                             pos_sel = self.page.locator("#persona_description_position")
                             pos_val = await pos_sel.evaluate("el => el.options[el.selectedIndex]?.text || ''") if await pos_sel.count() else ""
-                            lines = [self.t("chat.persona.field_name", name=display_name),
-                                     self.t("chat.persona.field_avatar", id=avatar_id or self.t("chat.state.none"))]
+                            lines = [f"""人设：{display_name}""",
+                                     f"""头像ID：{(avatar_id or """无""")}"""]
                             if pos_val:
-                                 lines.append(self.t("chat.persona.field_position", pos=pos_val))
-                            lines.append(self.t("chat.persona.field_desc", desc=desc or self.t("chat.persona.empty_desc")))
+                                 lines.append(f"""位置：{pos_val}""")
+                            lines.append(f"""描述：
+{(desc or """[空]""")}""")
                             yield event.plain_result("\n".join(lines))
                         finally:
                             await bartender_crawler.close_persona_panel(self)
                         return
                     if tokens[1] == "修改": # /酒人设 修改 [名字] [内容]：仅名字删除，不存在则新建
                         if len(tokens) < 3:
-                            yield event.plain_result(self.t("chat.persona.modify_usage"))
+                            yield event.plain_result("""请输入：/酒人设 修改 [名字] [内容]（仅名字则删除该人设）""")
                             return
                         persona_name = tokens[2]
                         description = " ".join(tokens[3:]).strip()
@@ -1526,57 +1456,51 @@ class bartender_crawler(Star):
                         else:
                             ok, msg = await bartender_crawler.create_persona(self, persona_name, description)
                             action = "create"
-                        action_keys = {"update": "chat.persona.action_update",
-                                       "delete": "chat.persona.action_delete",
-                                       "create": "chat.persona.action_create"}
+                        # action texts: update=更新, delete=删除, create=新建
                         if ok:
                             if action == "delete":
-                                yield event.plain_result(self.t("chat.persona.deleted", name=persona_name))
+                                yield event.plain_result(f"""已删除人设：{persona_name}""")
                             elif action == "create" and not description:
-                                yield event.plain_result(self.t("chat.persona.created_empty", name=persona_name))
+                                yield event.plain_result(f"""已新建空人设：{persona_name}""")
                             else:
-                                yield event.plain_result(self.t("chat.persona.done",
-                                                                 action=self.t(action_keys[action]),
-                                                                 name=persona_name))
+                                yield event.plain_result(f"""已{( '更新' if action == 'update' else '删除' if action == 'delete' else '新建') }人设：{persona_name}""")
                         else:
-                            yield event.plain_result(self.t("chat.persona.fail",
-                                                             action=self.t(action_keys[action]),
-                                                             msg=self._t_status(msg)))
+                            yield event.plain_result(f"""{( '更新' if action == 'update' else '删除' if action == 'delete' else '新建') }人设失败: {(msg)}""")
                         return
                     if tokens[1] == "解绑": # /酒人设 解绑
                         if session_key in self.persona_bindings:
                             del self.persona_bindings[session_key]
                             self._save_persona_bindings()
-                            yield event.plain_result(self.t("chat.persona.unbound"))
+                            yield event.plain_result("""已解除绑定人设""")
                         else:
-                            yield event.plain_result(self.t("chat.persona.not_bound"))
+                            yield event.plain_result("""当前未绑定人设""")
                         return
-                    yield event.plain_result(self.t("chat.persona.unknown_sub"))
+                    yield event.plain_result("""未知子命令，可用：绑定、查看、修改、解绑；发送 /酒人设 查看全部人设""")
                     return
                 # 查看模式：/酒人设
                 bound = self.persona_bindings.get(session_key)
-                bound_text = f"{bound['name']}" if bound else self.t("chat.state.none")
+                bound_text = f"{bound['name']}" if bound else """无"""
                 personas, current = await bartender_crawler.get_personas(self)
                 if personas is None:
-                    yield event.plain_result(self.t("chat.persona.list_fail"))
+                    yield event.plain_result("""浏览器连接失败，无法获取人设列表""")
                     return
-                lines = [self.t("chat.persona.current_bound", name=bound_text),
-                         self.t("chat.persona.current_tavern", name=current or self.t("chat.state.none"))]
+                lines = [f"""当前绑定人设：{bound_text}""",
+                         f"""酒馆当前人设：{(current or """无""")}"""]
                 if personas:
-                    lines.append(self.t("chat.persona.list_header"))
-                    lines.extend(self.t("chat.persona.list_item", name=name, avatar_id=avatar_id)
+                    lines.append("""人设列表：""")
+                    lines.extend(f"""- {name}（{avatar_id}）"""
                                  for name, avatar_id in personas.items())
                 else:
-                    lines.append(self.t("chat.persona.none_in_tavern"))
+                    lines.append("""酒馆中暂无任何人设，可先在酒馆页面创建""")
                 yield event.plain_result("\n".join(lines))
             except Exception as e:
                 logger.error(f"酒人设指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.wait"))
+            yield event.plain_result("""等待其他操作完成""")
 
     @filter.command("酒重生成")
     @_access_required
@@ -1595,23 +1519,23 @@ class bartender_crawler(Star):
                     await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息（QQ不支持流式输出）
                     rest_result = await bartender_crawler.rest_message(self)
                     if rest_result != "正常":
-                        yield event.plain_result(self.t("chat.regenerate.failed", status=self._t_status(rest_result)))
+                        yield event.plain_result(f"""重调失败: {(rest_result)}""")
                         return
                     message_text = await bartender_crawler.get_new_message_text(self)
                     if message_text:
                         yield event.plain_result(message_text)
                     else:
-                        yield event.plain_result(self.t("chat.status.empty_message"))
+                        yield event.plain_result("""合并消息为空""")
                 else:
-                    yield event.plain_result(self.t("chat.status.empty_input"))
+                    yield event.plain_result("""禁止输入为空""")
             except Exception as e:
                 logger.error(f"酒重生成指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.shake"))
+            yield event.plain_result("""正在Shake~，请稍作等待""")
 
     @filter.command("酒查看")
     @_access_required
@@ -1628,33 +1552,33 @@ class bartender_crawler(Star):
                         break
                 if quoted_text: # 引用模式：定位被引用消息对应的楼层
                     if not await bartender_crawler.check_browser(self):
-                        yield event.plain_result(self.t("chat.browser_fail"))
+                        yield event.plain_result("""浏览器连接失败""")
                         return
                     matches = await bartender_crawler.get_floor_by_quote(self, quoted_text)
                     if not matches:
-                        yield event.plain_result(self.t("chat.quote.not_found"))
+                        yield event.plain_result("""未在酒馆中找到与引用消息匹配的楼层""")
                     elif len(matches) == 1:
-                        yield event.plain_result(self.t("chat.quote.single", n=matches[0]))
+                        yield event.plain_result(f"""引用消息为第 {matches[0]} 层""")
                     else:
-                        nums = self.t("chat.quote.list_sep").join(str(m) for m in matches)
-                        yield event.plain_result(self.t("chat.quote.multi", nums=nums))
+                        nums = """、""".join(str(m) for m in matches)
+                        yield event.plain_result(f"""引用消息匹配到多层：第 {nums} 层""")
                     return
                 bot_id =event.message_obj.self_id # 获取bot_id
                 forward_message = await bartender_crawler.get_new_message(self, bot_id) # 获取信息
                 remaining = await bartender_crawler.get_now_floor(self,0) # 获取当前楼层数
                 if forward_message != None:
-                    yield event.plain_result(self.t("chat.floor.count", count=remaining))
+                    yield event.plain_result(f"""当前共{remaining}楼层""")
                     yield MessageEventResult(chain=[forward_message])
                 else:
-                    yield event.plain_result(self.t("chat.status.empty_message"))
+                    yield event.plain_result("""合并消息为空""")
             except Exception as e:
                 logger.error(f"酒查看指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.wait"))
+            yield event.plain_result("""等待其他操作完成""")
 
     @filter.command("酒状态")
     @_access_required
@@ -1666,28 +1590,31 @@ class bartender_crawler(Star):
                 await bartender_crawler.open_browser_auto(self, False)
                 await self.get_chat_Status()
                 if self.config['now_chats_name'] == None:
-                    chat = self.t("chat.status.no_char")
+                    chat = """无角色卡"""
                 else:
                     chat = self.config['now_chats_name']
                 logger.info(f"角色卡：{chat}")
                 if await bartender_crawler.check_browser(self):
-                    connect_status = self.t("chat.status.ok")
+                    connect_status = """正常"""
                 else:
-                    connect_status = self.t("chat.status.fail")
+                    connect_status = """失败"""
                 chats = '\n'.join(self.chats_name_id.keys())
                 session_key = self.get_persona_session_key(event)
                 bound = self.persona_bindings.get(session_key)
-                bound_text = f"{bound['name']}" if bound else self.t("chat.state.none")
-                yield event.plain_result(self.t("chat.status_cmd.text", chat=chat, status=connect_status,
-                                                bound=bound_text, chats=chats))
+                bound_text = f"{bound['name']}" if bound else """无"""
+                yield event.plain_result(f"""当前角色卡为：{chat}
+链接状态：{connect_status}
+你的绑定人设：{bound_text}
+角色列表：
+{chats}""")
             except Exception as e:
                 logger.error(f"酒状态指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.wait"))
+            yield event.plain_result("""等待其他操作完成""")
 
     @filter.command("酒切换")
     @_access_required
@@ -1701,19 +1628,19 @@ class bartender_crawler(Star):
                 if user_message != "酒切换" and len(user_message.split()) > 1:
                     chat_name = (user_message.split()[1:])[0]
                     if await bartender_crawler.switch_chats(self, chat_name):
-                        yield event.plain_result(self.t("chat.switch.done", name=chat_name))
+                        yield event.plain_result(f"""角色卡切换至：{chat_name}""")
                     else:
-                        yield event.plain_result(self.t("chat.switch.not_found", name=chat_name))
+                        yield event.plain_result(f"""未找到角色卡：{chat_name}""")
                 else:
-                    yield event.plain_result(self.t("chat.switch.empty"))
+                    yield event.plain_result("""消息不能为空""")
             except Exception as e:
                 logger.error(f"酒切换指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.wait"))
+            yield event.plain_result("""等待其他操作完成""")
 
     @filter.command("酒删除")
     @_access_required
@@ -1739,21 +1666,21 @@ class bartender_crawler(Star):
                         remaining = await bartender_crawler.get_now_floor(self, (abs(del_message)))
                     except Exception as e:
                         logger.error(f"楼层数解析失败: {e}")
-                        yield event.plain_result(self.t("chat.delete.not_number"))
+                        yield event.plain_result("""请输入数字""")
                         return
                 if del_status and del_message != None:
-                    yield event.plain_result(self.t("chat.delete.done",
-                                                     deleted=abs(del_message), remaining=remaining))
+                    yield event.plain_result(f"""已删除{(abs(del_message))}楼层
+剩余{remaining}楼层""")
                 else:
-                    yield event.plain_result(self.t("chat.delete.bad"))
+                    yield event.plain_result("""输入楼层数异常或最低""")
             except Exception as e:
                 logger.error(f"酒删除指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.wait"))
+            yield event.plain_result("""等待其他操作完成""")
 
     @filter.command("酒加卡")
     @_access_required
@@ -1766,18 +1693,19 @@ class bartender_crawler(Star):
                 if image_comp: # 同条消息附带图片或引用了含图消息，直接进入处理流程
                     await bartender_crawler.process_image(self, image_comp) # process_image无返回值，无需yield
                     chats = '\n'.join(self.chats_name_id.keys())
-                    yield event.plain_result(self.t("chat.list.roles", chats=chats))
+                    yield event.plain_result(f"""角色列表：
+{chats}""")
                 else: # 情况 B：指令和图片分条发送。为该用户开启等待状态，设定有效期
                     session_key = f"{event.get_group_id()}_{event.get_sender_id()}"
                     self.waiting_sessions[session_key] = time.time() + int(self.config['upload_interval'])
-                    yield event.plain_result(self.t("chat.upload.wait", seconds=self.config['upload_interval']))
+                    yield event.plain_result(f"""请在{self.config['upload_interval']}秒内发送角色卡""")
             except Exception as e:
                 logger.error(f"酒加卡指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.wait"))
+            yield event.plain_result("""等待其他操作完成""")
 
 
     @filter.command("酒删卡")
@@ -1790,25 +1718,26 @@ class bartender_crawler(Star):
                 await bartender_crawler.open_browser_auto(self, False)
                 user_message = event.message_str.strip() # 获取输入消息
                 if user_message == "酒删卡" or len(user_message.split()) <= 1: # 判断消息是否为空
-                    yield event.plain_result(self.t("chat.delete_char.no_name"))
+                    yield event.plain_result("""请输入角色卡名称""")
                 else:
                     user_message = (user_message.split()[1:])[0]
                     if user_message in self.chats_name_id:
                         await bartender_crawler.del_chat_png(self, user_message) # 删除对应名字角色卡
                         chats = '\n'.join(self.chats_name_id.keys())
-                        yield event.plain_result(self.t("chat.list.roles_current", chats=chats))
+                        yield event.plain_result(f"""当前角色列表：
+{chats}""")
                     elif user_message == "Seraphina":
-                        yield event.plain_result(self.t("chat.delete_char.default_forbidden"))
+                        yield event.plain_result("""禁止删除默认角色""")
                     else:
-                        yield event.plain_result(self.t("chat.delete_char.not_found"))
+                        yield event.plain_result("""未查找到角色卡名称""")
             except Exception as e:
                 logger.error(f"酒删卡指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.wait"))
+            yield event.plain_result("""等待其他操作完成""")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("酒启动")
@@ -1832,15 +1761,15 @@ class bartender_crawler(Star):
                     await bartender_crawler.check_1000page(self)
                     await bartender_crawler.get_all_chats(self)
                     await bartender_crawler.switch_chats(self, self.config['now_chats_name'])
-                yield event.plain_result(f"{result}{self.t('chat.tavern.connected_suffix')}")
+                yield event.plain_result(f"{result}{"""，已自动连接"""}")
             except Exception as e:
                 logger.error(f"酒启动指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.shake"))
+            yield event.plain_result("""正在Shake~，请稍作等待""")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("酒进程")
@@ -1848,17 +1777,17 @@ class bartender_crawler(Star):
         """查看后台 chrome/chromium 进程数量与插件浏览器状态"""
         total, detail = bartender_crawler.count_chrome_processes(self)
         if self.browser and self.browser.is_connected():
-            browser_state = self.t("chat.chrome.browser_connected")
+            browser_state = """已连接"""
         elif self.browser:
-            browser_state = self.t("chat.chrome.browser_disconnected")
+            browser_state = """连接已断开"""
         else:
-            browser_state = self.t("chat.chrome.not_started")
-        driver_state = self.t("chat.chrome.driver_running") if getattr(self, 'p', None) else self.t("chat.chrome.not_started")
-        lines = [self.t("chat.chrome.total", total=total)]
+            browser_state = """未启动"""
+        driver_state = """运行中""" if getattr(self, 'p', None) else """未启动"""
+        lines = [f"""系统 chrome/chromium 进程总数：{total}"""]
         if detail:
-            lines.append(self.t("chat.chrome.detail", detail="，".join(detail)))
-        lines.append(self.t("chat.chrome.browser", state=browser_state))
-        lines.append(self.t("chat.chrome.driver", state=driver_state))
+            lines.append(f"""明细：{("，".join(detail))}""")
+        lines.append(f"""插件浏览器：{browser_state}""")
+        lines.append(f"""playwright 驱动：{driver_state}""")
         yield event.plain_result("\n".join(lines))
 
     @filter.permission_type(filter.PermissionType.ADMIN)
@@ -1878,7 +1807,7 @@ class bartender_crawler(Star):
         await bartender_crawler.get_all_chats(self) # 重新获取所有角色
         await bartender_crawler.switch_chats(self, "Seraphina") # 切换至默认卡
         await bartender_crawler.close_browser_auto(self)
-        yield event.plain_result(self.t("chat.reset.done"))
+        yield event.plain_result("""已重置获取所有变量""")
 
     @filter.command("酒新建")
     @_access_required
@@ -1891,18 +1820,18 @@ class bartender_crawler(Star):
                 await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息
                 result = await bartender_crawler.start_new_chat(self)
                 if result != "正常":
-                    yield event.plain_result(self.t("chat.new_chat.failed", status=self._t_status(result)))
+                    yield event.plain_result(f"""新对话失败: {(result)}""")
                 else:
                     remaining = await bartender_crawler.get_now_floor(self, 0) # 获取当前楼层数
-                    yield event.plain_result(self.t("chat.new_chat.done", count=remaining))
+                    yield event.plain_result(f"""已开始新对话，当前共{remaining}楼层""")
             except Exception as e:
                 logger.error(f"酒新建指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.shake"))
+            yield event.plain_result("""正在Shake~，请稍作等待""")
 
     @filter.command("酒续写")
     @_access_required
@@ -1921,23 +1850,23 @@ class bartender_crawler(Star):
                     await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息
                     cont_result = await bartender_crawler.continue_message(self)
                     if cont_result != "正常":
-                        yield event.plain_result(self.t("chat.continue.failed", status=self._t_status(cont_result)))
+                        yield event.plain_result(f"""续写失败: {(cont_result)}""")
                         return
                     message_text = await bartender_crawler.get_new_message_text(self)
                     if message_text:
                         yield event.plain_result(message_text)
                     else:
-                        yield event.plain_result(self.t("chat.status.empty_message"))
+                        yield event.plain_result("""合并消息为空""")
                 else:
-                    yield event.plain_result(self.t("chat.status.no_char"))
+                    yield event.plain_result("""无角色卡""")
             except Exception as e:
                 logger.error(f"酒续写指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.shake"))
+            yield event.plain_result("""正在Shake~，请稍作等待""")
 
     @filter.command("酒停止生成")
     @_access_required
@@ -1948,15 +1877,15 @@ class bartender_crawler(Star):
             try:
                 await bartender_crawler.open_browser_auto(self, False)
                 result = await bartender_crawler.stop_generation(self)
-                yield event.plain_result(self._t_status(result))
+                yield event.plain_result(result)
             except Exception as e:
                 logger.error(f"酒停止指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.shake"))
+            yield event.plain_result("""正在Shake~，请稍作等待""")
 
     @filter.command("酒备选")
     @_access_required
@@ -1982,23 +1911,23 @@ class bartender_crawler(Star):
                     await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息
                     swipe_result = await bartender_crawler.swipe_message(self, direction)
                     if swipe_result != "正常":
-                        yield event.plain_result(self._t_status(swipe_result))
+                        yield event.plain_result(swipe_result)
                         return
                     message_text = await bartender_crawler.get_new_message_text(self)
                     if message_text:
                         yield event.plain_result(message_text)
                     else:
-                        yield event.plain_result(self.t("chat.status.empty_message"))
+                        yield event.plain_result("""合并消息为空""")
                 else:
-                    yield event.plain_result(self.t("chat.status.no_char"))
+                    yield event.plain_result("""无角色卡""")
             except Exception as e:
                 logger.error(f"酒备选指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.shake"))
+            yield event.plain_result("""正在Shake~，请稍作等待""")
 
     @filter.command("酒导出")
     @_access_required
@@ -2011,18 +1940,18 @@ class bartender_crawler(Star):
                 await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息
                 path = await bartender_crawler.export_current_chat(self)
                 if path and path.exists():
-                    yield event.plain_result(self.t("chat.export.done"))
+                    yield event.plain_result("""已导出当前聊天记录""")
                     yield event.chain_result([File.fromFileSystem(str(path))])
                 else:
-                    yield event.plain_result(self.t("chat.export.failed"))
+                    yield event.plain_result("""导出失败，未找到当前聊天记录""")
             except Exception as e:
                 logger.error(f"酒导出指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.shake"))
+            yield event.plain_result("""正在Shake~，请稍作等待""")
 
     @filter.command("酒统计")
     @_access_required
@@ -2034,37 +1963,38 @@ class bartender_crawler(Star):
                 await bartender_crawler.open_browser_auto(self, False)
                 data = await bartender_crawler.get_current_stats(self)
                 if not data:
-                    yield event.plain_result(self.t("chat.stats.failed"))
+                    yield event.plain_result("""获取统计失败或无角色卡""")
                     return
-                name = data.get("name") or self.t("chat.stats.unknown_name")
+                name = data.get("name") or """未知"""
                 s = data.get("stats")
                 if not s:
-                    yield event.plain_result(self.t("chat.stats.no_stats", name=name))
+                    yield event.plain_result(f"""角色卡：{name}
+未找到该角色的聊天统计""")
                     return
                 gen_sec = round((s.get("total_gen_time") or 0) / 1000, 1) # 毫秒转秒
                 lines = [
-                    self.t("chat.stats.character", name=name),
-                    self.t("chat.stats.messages", user=s.get('user_msg_count', 0), role=s.get('non_user_msg_count', 0)),
-                    self.t("chat.stats.words", user=s.get('user_word_count', 0), role=s.get('non_user_word_count', 0)),
-                    self.t("chat.stats.swipes", count=s.get('total_swipe_count', 0)),
-                    self.t("chat.stats.gen_time", seconds=gen_sec),
-                    self.t("chat.stats.chat_size", size=s.get('chat_size', 0)),
+                    f"""角色卡：{name}""",
+                    f"""消息数：用户 {(s.get('user_msg_count', 0))} 条 / 角色 {(s.get('non_user_msg_count', 0))} 条""",
+                    f"""字数：用户 {(s.get('user_word_count', 0))} / 角色 {(s.get('non_user_word_count', 0))}""",
+                    f"""备选回复(swipe)：{(s.get('total_swipe_count', 0))}""",
+                    f"""生成总耗时：{gen_sec} 秒""",
+                    f"""聊天文件大小：{(s.get('chat_size', 0))} 字节""",
                 ]
                 last = s.get("date_last_chat")
                 first = s.get("date_first_chat")
                 if last and last < 1e14: # 排除远期哨兵值
-                    lines.append(self.t("chat.stats.last_chat", time=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(last / 1000))))
+                    lines.append(f"""最近对话：{(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(last / 1000)))}""")
                 if first and first < 1e14:
-                    lines.append(self.t("chat.stats.first_chat", time=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(first / 1000))))
+                    lines.append(f"""首次对话：{(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(first / 1000)))}""")
                 yield event.plain_result("\n".join(lines))
             except Exception as e:
                 logger.error(f"酒统计指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.shake"))
+            yield event.plain_result("""正在Shake~，请稍作等待""")
 
     @filter.command("酒改名")
     @_access_required
@@ -2077,30 +2007,32 @@ class bartender_crawler(Star):
                 user_message = event.message_str.strip()
                 tokens = user_message.split()
                 if len(tokens) < 3:
-                    yield event.plain_result(self.t("chat.rename.usage"))
+                    yield event.plain_result("""请输入：/酒改名 旧名 新名""")
                     return
                 old_name = tokens[1]
                 new_name = " ".join(tokens[2:])
                 if old_name == "Seraphina":
-                    yield event.plain_result(self.t("chat.rename.default_forbidden"))
+                    yield event.plain_result("""禁止修改默认角色名""")
                     return
                 ok, msg = await bartender_crawler.rename_character(self, old_name, new_name)
                 if not ok:
-                    yield event.plain_result(self.t("chat.rename.failed", msg=self._t_status(msg)))
+                    yield event.plain_result(f"""改名失败: {(msg)}""")
                     return
                 if self.config['now_chats_name'] == old_name: # 若改名的是当前角色，同步配置
                     self.config['now_chats_name'] = new_name
                     self.config.save_config()
                 chats = '\n'.join(self.chats_name_id.keys())
-                yield event.plain_result(self.t("chat.rename.done", old=old_name, new=new_name, chats=chats))
+                yield event.plain_result(f"""已将「{old_name}」重命名为「{new_name}」
+当前角色列表：
+{chats}""")
             except Exception as e:
                 logger.error(f"酒改名指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.shake"))
+            yield event.plain_result("""正在Shake~，请稍作等待""")
 
     @filter.command("酒开始")
     @_access_required
@@ -2110,29 +2042,32 @@ class bartender_crawler(Star):
         user_id = event.get_sender_id()
         creator = f"{group_id}_{user_id}"
         if creator in self.chat_mode_creators: # 开始者只能一次，不能同时用户+群聊
-            yield event.plain_result(self.t("chat.mode.already_started"))
+            yield event.plain_result("""您已开启过酒馆聊天模式，请先 /酒结束""")
             return
         user_message = event.message_str.strip()
         is_group_mode = "群聊" in user_message.split()
         if is_group_mode and not group_id: # 私聊不支持群聊模式
-            yield event.plain_result(self.t("chat.mode.private_no_group"))
+            yield event.plain_result("""私聊不支持群聊模式，已按用户开启""")
             is_group_mode = False
         if is_group_mode:
             gid = str(group_id)
             if gid in self.chat_mode_group_keys: # 本群已由他人开启群聊模式
-                yield event.plain_result(self.t("chat.mode.group_taken"))
+                yield event.plain_result("""本群已开启群聊模式""")
                 return
             self.chat_mode_group_keys[gid] = creator
             self.chat_mode_creators[creator] = ("group", gid)
-            scope = self.t("chat.mode.scope_group")
+            scope = """本群"""
         else:
             user_key = f"{group_id}_{user_id}"
             self.chat_mode_user_keys.add(user_key)
             self.chat_mode_creators[creator] = ("user", user_key)
-            scope = self.t("chat.mode.scope_user")
-        chat = self.config.get('now_chats_name') or self.t("chat.status.no_char")
+            scope = """本人"""
+        chat = self.config.get('now_chats_name') or """无角色卡"""
         yield event.plain_result(
-            self.t("chat.mode.started", scope=scope, chat=chat)
+            f"""已进入酒馆聊天模式（{scope}）
+当前角色：{chat}
+直接发送消息即可（无需 /酒 前缀）
+/酒结束 退出"""
         )
 
     @filter.command("酒结束")
@@ -2143,14 +2078,14 @@ class bartender_crawler(Star):
         user_id = event.get_sender_id()
         creator = f"{group_id}_{user_id}"
         if creator not in self.chat_mode_creators:
-            yield event.plain_result(self.t("chat.mode.not_started"))
+            yield event.plain_result("""您未开启酒馆聊天模式""")
             return
         mode, scope = self.chat_mode_creators.pop(creator) # 结束这个用户创建的开始
         if mode == "user":
             self.chat_mode_user_keys.discard(scope)
         else:
             self.chat_mode_group_keys.pop(scope, None)
-        yield event.plain_result(self.t("chat.mode.ended"))
+        yield event.plain_result("""已退出酒馆聊天模式""")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("酒权限")
@@ -2163,18 +2098,17 @@ class bartender_crawler(Star):
             whitelist = [str(x) for x in (self.config.get('whitelist_groups') or [])]
             blacklist = [str(x) for x in (self.config.get('blacklist_groups') or [])]
             yield event.plain_result(
-                self.t("chat.perms.header") + "\n"
-                + self.t("chat.perms.admin_mode", state=self.t("chat.state.on" if admin_only else "chat.state.off")) + "\n"
-                + self.t("chat.perms.whitelist", list=", ".join(whitelist) or self.t("chat.state.none")) + "\n"
-                + self.t("chat.perms.blacklist", list=", ".join(blacklist) or self.t("chat.state.none")) + "\n"
-                + self.t("chat.perms.usage")
+                """当前权限设置""" + "\n"
+                + f"""管理员模式：{("""开""")}""" + "\n"
+                + f"""白名单群聊：{(", ".join(whitelist) or """无""")}""" + "\n"
+                + f"""黑名单群聊：{(", ".join(blacklist) or """无""")}""" + "\n"
+                + """用法：/酒权限 管理 开|关｜/酒权限 白名单 [群号|移除 群号]｜/酒权限 黑名单 [群号|移除 群号]"""
             )
             return
         sub = tokens[1]
         if sub == "管理":
             if len(tokens) < 3:
-                yield event.plain_result(self.t("chat.perms.admin_current",
-                                                 state=self.t("chat.state.on" if self.config.get('admin_only') else "chat.state.off")))
+                yield event.plain_result(f"""管理员模式当前为：{("""开""")}""")
                 return
             sw = tokens[2]
             if sw == "开":
@@ -2182,23 +2116,21 @@ class bartender_crawler(Star):
             elif sw == "关":
                 self.config['admin_only'] = False
             else:
-                yield event.plain_result(self.t("chat.perms.admin_bad_arg"))
+                yield event.plain_result("""参数错误，用法：/酒权限 管理 开|关""")
                 return
             self.config.save_config()
-            yield event.plain_result(self.t("chat.perms.admin_set",
-                                             state=self.t("chat.state.enabled" if self.config['admin_only'] else "chat.state.disabled"),
-                                             scope=self.t("chat.perms.scope_admin" if self.config['admin_only'] else "chat.perms.scope_all")))
+            yield event.plain_result(f"""已{("""开启""")}管理员模式（所有酒命令{("""仅管理员""")}可用）""")
             return
         if sub in ("白名单", "黑名单"):
             key = 'whitelist_groups' if sub == "白名单" else 'blacklist_groups'
-            sub_label = self.t("chat.perms.label_whitelist" if sub == "白名单" else "chat.perms.label_blacklist")
+            sub_label = f"""白名单"""
             groups = [str(x) for x in (self.config.get(key) or [])]
             if len(tokens) >= 4 and tokens[2] in ("移除", "删除", "-"):
                 gid = tokens[3]
                 groups = [g for g in groups if g != gid]
                 self.config[key] = groups
                 self.config.save_config()
-                yield event.plain_result(self.t("chat.perms.group_removed", sub=sub_label, gid=gid))
+                yield event.plain_result(f"""已从{sub_label}移除群聊：{gid}""")
                 return
             if len(tokens) >= 3 and tokens[2] not in ("移除", "删除", "-"):
                 gid = tokens[2]
@@ -2206,13 +2138,11 @@ class bartender_crawler(Star):
                     groups.append(gid)
                     self.config[key] = groups
                     self.config.save_config()
-                yield event.plain_result(self.t("chat.perms.group_added", sub=sub_label, gid=gid,
-                                                 list=", ".join(groups) or self.t("chat.state.none")))
+                yield event.plain_result(f"""已将群聊 {gid} 加入{sub_label}，当前{sub_label}：{(", ".join(groups) or """无""")}""")
                 return
-            yield event.plain_result(self.t("chat.perms.group_current", sub=sub_label,
-                                            list=", ".join(groups) or self.t("chat.state.none")))
+            yield event.plain_result(f"""{sub_label}当前群聊：{(", ".join(groups) or """无""")}""")
             return
-        yield event.plain_result(self.t("chat.perms.unknown_sub"))
+        yield event.plain_result("""未知子命令，用法：/酒权限 管理 开|关｜/酒权限 白名单 [群号|移除 群号]｜/酒权限 黑名单 [群号|移除 群号]""")
 
     @filter.command("酒世界书")
     @_access_required
@@ -2226,12 +2156,12 @@ class bartender_crawler(Star):
                 tokens = user_message.split()
                 if len(tokens) > 1 and tokens[1] == "查看":
                     if len(tokens) < 3:
-                        yield event.plain_result(self.t("chat.worldinfo.usage_view"))
+                        yield event.plain_result("""请输入：/酒世界书 查看 [名字]""")
                         return
                     name = " ".join(tokens[2:])
                     data = await bartender_crawler.get_world_info_detail(self, name)
                     if not data:
-                        yield event.plain_result(self.t("chat.worldinfo.not_found", name=name))
+                        yield event.plain_result(f"""未找到世界书：{name}""")
                         return
                     entries = data.get("entries") or {}
                     if isinstance(entries, dict):
@@ -2240,66 +2170,64 @@ class bartender_crawler(Star):
                         entry_list = entries
                     else:
                         entry_list = []
-                    lines = [self.t("chat.worldinfo.detail_header", name=name),
-                             self.t("chat.worldinfo.detail_count", count=len(entry_list))]
-                    on_text = self.t("chat.worldinfo.state_on")
-                    off_text = self.t("chat.worldinfo.state_off")
+                    lines = [f"""世界书：{name}""",
+                             f"""共 {(len(entry_list))} 条目"""]
+                    on_text = """启用"""
+                    off_text = """停用"""
                     for i, entry in enumerate(entry_list, 1):
                         enabled = not entry.get("disable", False)
                         keys = entry.get("key", "")
                         content = (entry.get("content", "") or "").strip()
-                        lines.append(self.t("chat.worldinfo.entry_item", i=i,
-                                            state=on_text if enabled else off_text, keys=keys))
+                        lines.append(f"""{i}. [{(on_text if enabled else off_text)}] 触发词：{keys}""")
                         if content:
                             lines.append(f"   {content[:200]}")
                     yield event.plain_result("\n".join(lines))
                 elif len(tokens) > 1 and tokens[1] == "切换":
                     if len(tokens) < 3:
-                        yield event.plain_result(self.t("chat.worldinfo.usage_toggle"))
+                        yield event.plain_result("""请输入：/酒世界书 切换 [名字]""")
                         return
                     name = " ".join(tokens[2:])
                     await bartender_crawler.react_message(self, event)
                     ok, msg = await bartender_crawler.toggle_world_info(self, name)
-                    msg_t = self._t_status(msg)
+                    msg_t = msg
                     if ok:
-                        yield event.plain_result(self.t("chat.worldinfo.toggled", name=name, action=msg_t))
+                        yield event.plain_result(f"""世界书「{name}」{msg_t}""")
                     else:
-                        yield event.plain_result(self.t("chat.worldinfo.toggle_fail", name=name, msg=msg_t))
+                        yield event.plain_result(f"""切换失败：{name}，{msg_t}""")
                 else:
                     # 列出所有世界书 + 已启用
                     data = await bartender_crawler.list_world_infos(self)
                     if not data:
-                        yield event.plain_result(self.t("chat.worldinfo.list_fail"))
+                        yield event.plain_result("""获取世界书列表失败""")
                         return
                     wi_list = data.get("list") or []
                     active = data.get("active") or []
-                    none_text = self.t("chat.state.none")
-                    no_char = self._t_status("无角色卡")
-                    lines = [self.t("chat.worldinfo.current_chat", name=no_char)]
-                    lines.append(self.t("chat.worldinfo.active_list",
-                                        list=", ".join(active) if active else none_text))
+                    none_text = """无"""
+                    no_char = "无角色卡"
+                    lines = [f"""当前角色：{no_char}"""]
+                    lines.append(f"""已启用世界书：{(", ".join(active) if active else none_text)}""")
                     if wi_list:
                         lines.append("---")
-                        lines.append(self.t("chat.worldinfo.all_header"))
+                        lines.append("""所有世界书：""")
                         for item in wi_list:
                             lines.append(f"- {item.get('name', item.get('file_id', '?'))}")
                     else:
-                        lines.append(self.t("chat.worldinfo.empty_list"))
+                        lines.append("""酒馆中暂无世界书""")
                     yield event.plain_result("\n".join(lines))
             except Exception as e:
                 logger.error(f"酒世界书指令异常: {e}")
-                yield event.plain_result(self.t("chat.error.exec"))
+                yield event.plain_result("""指令执行异常，请稍后重试""")
             finally:
                 await bartender_crawler.close_browser_auto(self)
                 self.status_running = True
         else:
-            yield event.plain_result(self.t("chat.busy.shake"))
+            yield event.plain_result("""正在Shake~，请稍作等待""")
 
     @filter.command("酒帮助")
     @_access_required
     async def help_command(self, event: AstrMessageEvent):
         """指令帮助指南"""
-        yield event.plain_result(self.t("chat.help.header") + "\n" + self.t("chat.help.lines"))
+        yield event.plain_result("""指令帮助""" + "\n" + "基础用法与示例见上表；完整指令见 /酒帮助。")
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message_received(self, event: AstrMessageEvent):
@@ -2335,25 +2263,25 @@ class bartender_crawler(Star):
                         await bartender_crawler.react_message(self, event) # 贴表情回应代替占位消息
                         send_result = await bartender_crawler.send_message(self, msg) # 整条消息作为内容发送
                         if send_result != "正常":
-                            yield event.plain_result(self.t("chat.send.failed", status=self._t_status(send_result)))
+                            yield event.plain_result(f"""发送失败: {(send_result)}""")
                             return
                         message_text = await bartender_crawler.get_new_message_text(self) # 获取最新消息文本
                         remaining = await bartender_crawler.get_now_floor(self, 0) # 获取当前楼层数
                         if message_text:
                             if self.config.get('show_floor_count'):
-                                yield event.plain_result(f"{self.t('chat.floor.count', count=remaining)}\n\n{message_text}")
+                                yield event.plain_result(f"{f"""当前共{remaining}楼层"""}\n\n{message_text}")
                             else:
                                 yield event.plain_result(message_text)
                         else:
-                            yield event.plain_result(self.t("chat.status.empty_message"))
+                            yield event.plain_result("""合并消息为空""")
                     except Exception as e:
                         logger.error(f"聊天模式转发异常: {e}")
-                        yield event.plain_result(self.t("chat.error.exec"))
+                        yield event.plain_result("""指令执行异常，请稍后重试""")
                     finally:
                         await bartender_crawler.close_browser_auto(self)
                         self.status_running = True
                 else:
-                    yield event.plain_result(self.t("chat.busy.shake"))
+                    yield event.plain_result("""正在Shake~，请稍作等待""")
                 return
             # 酒指令 / 含图片 / 空白：落至下方等待逻辑或放行
         session_key = f"{event.get_group_id()}_{event.get_sender_id()}" 
@@ -2361,7 +2289,7 @@ class bartender_crawler(Star):
             return
         if time.time() > self.waiting_sessions[session_key]: # 检查是否已经超时
             del self.waiting_sessions[session_key]
-            yield event.plain_result(self.t("chat.upload.timeout"))
+            yield event.plain_result("""等待超时，操作已取消""")
             return
         image_comp = None
         for comp in messages: # 遍历这条新消息寻找图片或图片文件
@@ -2374,14 +2302,15 @@ class bartender_crawler(Star):
             if self.status_running: # 与其它指令互斥，避免并发操作同一个浏览器
                 self.status_running = False
                 try:
-                    yield event.plain_result(self.t("chat.upload.received"))
+                    yield event.plain_result("""已接收角色卡,添加中~""")
                     await bartender_crawler.process_image(self, image_comp) # 进入统一处理流程
                     chats = '\n'.join(self.chats_name_id.keys())
-                    yield event.plain_result(self.t("chat.list.roles_current", chats=chats))
+                    yield event.plain_result(f"""当前角色列表：
+{chats}""")
                 finally:
                     self.status_running = True
             else:
-                yield event.plain_result(self.t("chat.busy.other_op"))
+                yield event.plain_result("""有其他操作进行中，请稍后重试""")
         else: # 发的是纯文字，静默忽略
             return 
 
