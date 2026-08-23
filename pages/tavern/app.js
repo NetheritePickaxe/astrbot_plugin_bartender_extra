@@ -1,23 +1,11 @@
 const bridge = window.AstrBotPluginPage;
 const $ = (id) => document.getElementById(id);
 
-// i18n：从 .astrbot-plugin/i18n/{locale}.json 的 pages.tavern 取词，fallback 为中文文案
-const t = (key, fallback) => bridge.t("pages.tavern." + key, fallback);
-
 let stUrl = "";
 let flashTimer = null;
 let lastInfo = null;
 let lastError = null;
 let installPollTimer = null;
-
-function applyTheme() {
-  const ctx = bridge.getContext();
-  document.documentElement.setAttribute(
-    "data-theme",
-    ctx && ctx.isDark ? "dark" : "light"
-  );
-  document.documentElement.lang = (ctx && ctx.locale) || "zh-CN";
-}
 
 function isMixedContent() {
   try {
@@ -259,14 +247,6 @@ function bind() {
 }
 
 await bridge.ready();
-<<<<<<< HEAD
-applyTheme();
-bridge.onContext(() => {
-  applyTheme();
-  render();
-});
-=======
 
->>>>>>> 3fa4c44 (feat!: 移除 i18n 支持; 版本回落 v1.6.2; README 动态版本徽章; 修复 metadata.yaml 回归)
 bind();
 refreshStatus();

@@ -11,7 +11,7 @@
 ## [v1.6.2] — 2026-08-23
 
 ### 移除
-- 完全移除 i18n 支持（`.astrbot-plugin/i18n/` 目录、`self.t()` / `_t_status()` 方法、`_STATUS_TEXT_KEYS` / `_RENAME_ERR_KEYS` 映射、`language` 配置项）；所有回复文案硬编码为简体中文
+- 配置项 `language` 回复语言配置项；回复文案统一为简体中文硬编码
 - 配置项 `thread_safe_mode` 更名为 `low_memory_mode`（低内存占用模式）；老用户需重新配置
 - 浏览器无头模式默认开启（`browser_Visible` 默认值由 `false` 改为 `true`）
 - README 指令列表合并英文别名列，移除独立别名章节
@@ -29,10 +29,10 @@
 ## [v1.6.1] — 2026-08-23
 
 ### 新增
-- `/酒世界书` 全量 i18n 翻译（usage/detail_header/detail_count/entry_item/action_on+off/toggled/toggle_fail/current_chat/active_list/all_header/empty_list/selector_missing）
-- `/酒人设` 分支补全 i18n（bind_usage / view_not_found / unknown_sub / field_name/field_avatar/field_position/field_desc/empty_desc）
-- `toggle_world_info` JS evaluate 返回值结构化（`{ok, code}` / `{ok, was}`），Python 侧统一走 `self.t()` 翻译，彻底关闭翻译漏洞
-- 插件名称由「调酒师」改为「调酒师-增强」（metadata.yaml + i18n zh-CN / en-US）
+- `/酒世界书` 输出文案补全（usage/detail_header/detail_count/entry_item/action_on+off/toggled/toggle_fail/current_chat/active_list/all_header/empty_list/selector_missing）
+- `/酒人设` 分支输出文案补全（绑定用法提示、查看未找到、未知子命令、详情字段标签等）
+- `toggle_world_info` JS evaluate 返回值结构化（`{ok, code}` / `{ok, was}`），Python 侧统一处理状态文案输出
+- 插件名称由「调酒师」改为「调酒师-增强」（metadata.yaml）
 - README 新增「🆕 本项目新增功能」章节（10 项增强特性）
 - README 介绍段声明为 dragonuniverse8248/astrbot_plugin_bartender 的 Fork 增强分支
 - README 使用示例补充 3 行新指令；修正 Releases/Git 仓库链接至 NetheritePickaxe 主仓库
@@ -40,8 +40,7 @@
 ### 修改
 - WebUI 酒馆页面参考 SillyTavern 官方视觉风格重写（强制深色主题、glassmorphism、amber/gold 强调色）
 - WebUI 新增一键安装 SillyTavern 按钮（后台 subprocess 调用 download_sillytavern.py，2s 轮询状态）
-- 异常兜底统一使用 i18n 键：`chat.error.exec`、`chat.busy.shake`、`chat.chrome.stat_fail`、`_t_status("无角色卡")`
-- `chat.state.none` 键复用（替代硬编码的 "无"）
+- 统一异常兜底与状态文案输出（执行异常、指令忙碌、状态获取失败等场景）
 
 ---
 
@@ -53,7 +52,6 @@
 - `/酒世界书` — 列出所有世界书及已启用列表
 - `/酒世界书 查看 [名字]` — 查看世界书条目详情
 - `/酒世界书 切换 [名字]` — 一键启用/禁用指定世界书
-- i18n 框架（支持 zh-CN / en-US）
 
 ---
 
@@ -97,10 +95,3 @@
 ---
 
 ## 版本说明
-
-- **[Unreleased]**：暂存区中的未发布改动
-- **[v1.6.1]**：[bce4d4e...ad94201]
-- **[v1.6.0]**：[bda220f...c2783b5]
-- **[v1.5.0]**：[1b5f2b2]
-- **[v1.3.0]**：[b714e8f]
-- **[v1.0.4]**：[1970e83...ddfda1a]
