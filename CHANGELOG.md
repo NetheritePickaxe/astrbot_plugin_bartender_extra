@@ -1,5 +1,15 @@
 # 更新日志
 
+## [v1.6.5] — 2026-08-24
+
+### 修复
+- 修复面板 iframe 无法内嵌酒馆、浏览器显示「127.0.0.1 拒绝连接」的问题：SillyTavern 1.18.0 经 helmet 默认发送 `X-Frame-Options: SAMEORIGIN`，与面板（不同源）跨域 iframe 冲突。插件现于启动 ST 前幂等修补 `SillyTavern/src/server-main.js`，给 `helmet({...})` 补 `frameguard: false`，去掉该响应头，允许面板内嵌
+
+### 变更
+- `start_tavern` 在拉起 `node server.js` 前调用 `_patch_st_frameguard` 幂等打补丁（每次启动检查，能扛住 ST 重新下载覆盖）
+
+---
+
 ## [v1.6.4] — 2026-08-24
 
 ### 修复
