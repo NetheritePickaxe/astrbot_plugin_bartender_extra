@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import re, json
 import time, aiohttp, platform
-import subprocess, os, shutil, asyncio, functools
+import subprocess, os, shutil, asyncio, functools, sys
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
@@ -111,6 +111,7 @@ class bartender_crawler(Star):
         self.plugin_dir = Path(__file__).parent # 获取当前目录
         self.browser_dir = self.plugin_dir / "browser"
         self.persona_bindings = self._load_persona_bindings() # 用户人设绑定字典，格式为: {"群号_用户ID": {"name": 人设名, "avatar_id": 人设头像ID}}
+        self._st_install_status = None # 酒馆安装状态：None | "downloading" | "extracting" | "installing_deps" | "done" | "failed: <msg>"
         self._register_web_apis(context)
 
     @staticmethod
@@ -161,6 +162,12 @@ class bartender_crawler(Star):
             ["POST"],
             "启动插件目录中的酒馆",
         )
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/tavern/install",
+            self.page_install_tavern,
+            ["POST"],
+            "下载并安装 SillyTavern 到插件目录",
+        )
 
     def _check_access(self, event):
         """访问控制：黑名单优先、白名单限制群聊、管理员模式要求管理员；返回 (是否通过, 原因)"""
@@ -197,12 +204,121 @@ class bartender_crawler(Star):
             "port": self.config['browser_port'],
             "reachable": reachable,
             "has_bundled_st": has_bundled,
+            "install_status": self._st_install_status,
         })
 
     async def page_start_tavern(self):
         """启动插件目录中的酒馆（供 WebUI 一键启动按钮调用）"""
         ok, msg = await self.start_tavern()
         return json_response({"ok": ok, "message": msg})
+
+    async def page_install_tavern(self):
+        """下载并安装 SillyTavern（供 WebUI 一键安装按钮调用）"""
+        if self._st_install_status is not None:
+            return json_response({"ok": False, "message": self.t("pages.tavern.already_installing", "正在安装中，请等待完成")})
+        ok, msg = await self.install_tavern()
+        if ok:
+            asyncio.create_task(self._install_tavern_bg())
+        return json_response({"ok": ok, "message": msg})
+
+    async def install_tavern(self):
+        """启动酒馆安装流程（后台 subprocess 调用 download_sillytavern.py）"""
+        st_dir = self.plugin_dir / "SillyTavern"
+        if (st_dir / "server.js").exists():
+            return False, self.t("pages.tavern.install_already", "酒馆已安装")
+        node_path = shutil.which("node")
+        if not node_path:
+            return False, self.t("pages.tavern.install_no_node", "未检测到 Node.js，请先安装 Node.js 18+")
+        self._st_install_status = "starting"
+        return True, self.t("pages.tavern.installing", "安装中…")
+
+    async def _install_tavern_bg(self):
+        """后台执行：subprocess 调用 download_sillytavern.py，逐行读 stdout 更新状态"""
+        script = self.plugin_dir / "download_sillytavern.py"
+        log_path = self.cache_dir / "st_install.log"
+        try:
+            if hasattr(self, "_st_install_log") and self._st_install_log:
+                try:
+                    self._st_install_log.close()
+                except Exception:
+                    pass
+            self._st_install_log = open(log_path, "w", encoding="utf-8")
+            popen_kwargs = {
+                "cwd": str(self.plugin_dir),
+                "stdin": subprocess.PIPE,
+                "stdout": self._st_install_log,
+                "stderr": subprocess.STDOUT,
+            }
+            if os.name == "nt":
+                popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+            else:
+                popen_kwargs["start_new_session"] = True
+            proc = subprocess.Popen(
+                [sys.executable, str(script)],
+                **popen_kwargs,
+            )
+            try:
+                proc.stdin.write(b"y\n")
+                proc.stdin.flush()
+            except Exception:
+                pass
+            try:
+                proc.stdin.close()
+            except Exception:
+                pass
+            # 逐行读日志文件更新状态
+            while proc.poll() is None:
+                self._update_install_status_from_log()
+                await asyncio.sleep(2)
+            self._update_install_status_from_log()
+            rc = proc.returncode
+            if rc == 0:
+                self._st_install_status = "done"
+            else:
+                if not (self._st_install_status and self._st_install_status.startswith("failed")):
+                    self._st_install_status = f"failed: exit code {rc}"
+        except Exception as e:
+            self._st_install_status = f"failed: {e}"
+            logger.error(f"安装 SillyTavern 异常: {e}")
+        finally:
+            try:
+                self._st_install_log.close()
+            except Exception:
+                pass
+            await asyncio.sleep(10)
+            self._st_install_status = None
+
+    def _update_install_status_from_log(self):
+        """读取安装日志文件末尾，匹配关键字更新安装状态"""
+        log_path = self.cache_dir / "st_install.log"
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+            for line in reversed(lines):
+                line = line.strip()
+                if not line:
+                    continue
+                if "[错误]" in line or "失败" in line:
+                    self._st_install_status = f"failed: {line}"
+                    return
+                if "正在安装依赖" in line or "npm install" in line.lower():
+                    self._st_install_status = "installing_deps"
+                    return
+                if "正在解压" in line or "解压进度" in line:
+                    self._st_install_status = "extracting"
+                    return
+                if "正在下载" in line or "已下载" in line:
+                    self._st_install_status = "downloading"
+                    return
+                if "[成功]" in line and "下载完成" in line:
+                    self._st_install_status = "extracting"
+                    return
+                if "[成功]" in line and "依赖安装完成" in line:
+                    self._st_install_status = "done"
+                    return
+                break
+        except Exception:
+            pass
 
     def _persona_bindings_path(self) -> Path:
         """人设绑定数据的持久化文件路径"""

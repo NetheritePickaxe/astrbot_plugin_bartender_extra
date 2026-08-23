@@ -86,7 +86,19 @@
       "retry": "请稍后重试。",
       "start_fail": "启动失败",
       "copied": "已复制",
-      "press_ctrl_c": "请按 Ctrl+C"
+      "press_ctrl_c": "请按 Ctrl+C",
+      "install": "安装酒馆",
+      "installing": "安装中…",
+      "install_fail": "安装失败",
+      "install_done": "安装完成",
+      "install_done_desc": "SillyTavern 已安装，可点击「启动酒馆」启动。",
+      "install_progress_downloading": "正在下载酒馆…",
+      "install_progress_extracting": "正在解压…",
+      "install_progress_deps": "正在安装依赖(可能需要数分钟)…",
+      "install_desc": "未检测到酒馆，点击「安装酒馆」一键下载并安装。",
+      "already_installing": "正在安装中，请等待完成",
+      "install_no_node": "未检测到 Node.js，请先安装 Node.js 18+",
+      "install_already": "酒馆已安装"
     }
   },
   "chat": {

@@ -86,7 +86,19 @@
       "retry": "Please try again later.",
       "start_fail": "Start failed",
       "copied": "Copied",
-      "press_ctrl_c": "Press Ctrl+C"
+      "press_ctrl_c": "Press Ctrl+C",
+      "install": "Install SillyTavern",
+      "installing": "Installing…",
+      "install_fail": "Installation failed",
+      "install_done": "Installation complete",
+      "install_done_desc": "SillyTavern is installed. Click \"Start tavern\" to launch it.",
+      "install_progress_downloading": "Downloading SillyTavern…",
+      "install_progress_extracting": "Extracting…",
+      "install_progress_deps": "Installing dependencies (may take several minutes)…",
+      "install_desc": "SillyTavern not found. Click \"Install SillyTavern\" to download and install.",
+      "already_installing": "Installation already in progress",
+      "install_no_node": "Node.js not found. Install Node.js 18+ first",
+      "install_already": "SillyTavern already installed"
     }
   },
   "chat": {

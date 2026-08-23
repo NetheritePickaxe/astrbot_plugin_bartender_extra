@@ -8,6 +8,7 @@ let stUrl = "";
 let flashTimer = null;
 let lastInfo = null;
 let lastError = null;
+let installPollTimer = null;
 
 function applyTheme() {
   const ctx = bridge.getContext();
@@ -44,6 +45,7 @@ function showFrame() {
   f.classList.remove("hidden");
   $("fallback").classList.add("hidden");
   $("start").classList.add("hidden");
+  $("install").classList.add("hidden");
 }
 
 function showFallback(title, desc) {
@@ -58,6 +60,11 @@ function showFallback(title, desc) {
 function applyStatus(info) {
   stUrl = info.st_url || "";
   $("addr").textContent = stUrl || "—";
+  // 安装进行中/刚完成 → 优先展示安装状态，隐藏按钮
+  if (info.install_status) {
+    applyInstallStatus(info.install_status);
+    return;
+  }
   if (info.reachable) {
     setStatus(t("online", "酒馆在线"), "online");
     if (isMixedContent()) {
@@ -70,14 +77,74 @@ function applyStatus(info) {
     }
   } else {
     setStatus(t("offline", "酒馆未连接"), "offline");
-    if (info.has_bundled_st) $("start").classList.remove("hidden");
+    if (info.has_bundled_st) {
+      $("start").classList.remove("hidden");
+    } else {
+      $("install").classList.remove("hidden");
+    }
     showFallback(
       t("offline", "酒馆未连接"),
       t("offline_desc_base", "未检测到酒馆服务运行。") +
         (info.has_bundled_st
           ? t("offline_desc_start", "可点击右上「启动酒馆」一键拉起插件目录中的酒馆。")
-          : t("offline_desc_manual", "请确认酒馆已启动，或检查插件配置中的酒馆地址与端口。"))
+          : t("install_desc", "未检测到酒馆，点击「安装酒馆」一键下载并安装。"))
     );
+  }
+}
+
+// 安装状态渲染：进行中显示进度，完成/失败显示结果并停轮询
+function applyInstallStatus(status) {
+  $("start").classList.add("hidden");
+  $("install").classList.add("hidden");
+  if (status === "downloading" || status === "starting") {
+    setStatus(t("installing", "安装中…"), "unknown");
+    showFallback(t("installing", "安装中…"), t("install_progress_downloading", "正在下载酒馆…"));
+  } else if (status === "extracting") {
+    setStatus(t("installing", "安装中…"), "unknown");
+    showFallback(t("installing", "安装中…"), t("install_progress_extracting", "正在解压…"));
+  } else if (status === "installing_deps") {
+    setStatus(t("installing", "安装中…"), "unknown");
+    showFallback(t("installing", "安装中…"), t("install_progress_deps", "正在安装依赖(可能需要数分钟)…"));
+  } else if (status === "done") {
+    stopInstallPolling();
+    setStatus(t("install_done", "安装完成"), "online");
+    showFallback(t("install_done", "安装完成"), t("install_done_desc", "SillyTavern 已安装，可点击「启动酒馆」启动。"));
+    $("start").classList.remove("hidden");
+  } else if (typeof status === "string" && status.startsWith("failed")) {
+    stopInstallPolling();
+    setStatus(t("install_fail", "安装失败"), "offline");
+    showFallback(t("install_fail", "安装失败"), status);
+    $("install").classList.remove("hidden");
+  }
+}
+
+// 安装轮询：每 2 秒拉取一次 info 读取安装状态
+async function pollInstall() {
+  if (installPollTimer) return;
+  installPollTimer = setInterval(async () => {
+    try {
+      const info = await bridge.apiGet("info");
+      lastInfo = info;
+      if (!info.install_status) {
+        // 后台已清空状态 → 回到正常流程
+        stopInstallPolling();
+        applyStatus(info);
+        return;
+      }
+      applyInstallStatus(info.install_status);
+    } catch (e) {
+      stopInstallPolling();
+      lastError = e.message || t("retry", "请稍后重试。");
+      setStatus(t("status_fail", "状态获取失败"), "offline");
+      showFallback(t("status_fail", "状态获取失败"), lastError);
+    }
+  }, 2000);
+}
+
+function stopInstallPolling() {
+  if (installPollTimer) {
+    clearInterval(installPollTimer);
+    installPollTimer = null;
   }
 }
 
@@ -87,6 +154,7 @@ function render() {
   $("copy").title = t("copy_title", "复制地址");
   $("refresh").textContent = t("refresh", "刷新状态");
   $("start").textContent = t("start", "启动酒馆");
+  $("install").textContent = t("install", "安装酒馆");
   if (lastError) {
     setStatus(t("status_fail", "状态获取失败"), "offline");
     showFallback(t("status_fail", "状态获取失败"), lastError);
@@ -100,6 +168,7 @@ async function refreshStatus() {
   lastError = null;
   setStatus(t("checking", "检测中…"), "unknown");
   $("start").classList.add("hidden");
+  $("install").classList.add("hidden");
   try {
     const info = await bridge.apiGet("info");
     lastInfo = info;
@@ -127,6 +196,27 @@ async function startTavern() {
   } finally {
     btn.disabled = false;
     btn.textContent = t("start", "启动酒馆");
+  }
+}
+
+async function installTavern() {
+  const btn = $("install");
+  btn.disabled = true;
+  btn.textContent = t("installing", "安装中…");
+  try {
+    const r = await bridge.apiPost("tavern/install", {});
+    if (r && r.ok) {
+      btn.textContent = t("installing", "安装中…");
+      await refreshStatus();
+      pollInstall();
+    } else {
+      alert((r && r.message) || t("install_fail", "安装失败"));
+      btn.textContent = t("install", "安装酒馆");
+    }
+  } catch (e) {
+    alert(e.message || t("install_fail", "安装失败"));
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -164,6 +254,7 @@ async function copyAddr() {
 function bind() {
   $("refresh").addEventListener("click", refreshStatus);
   $("start").addEventListener("click", startTavern);
+  $("install").addEventListener("click", installTavern);
   $("copy").addEventListener("click", copyAddr);
 }
 
