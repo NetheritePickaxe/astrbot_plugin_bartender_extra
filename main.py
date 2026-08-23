@@ -120,7 +120,7 @@ os.environ["PWDEBUG"] = "0"
 @register(PLUGIN_NAME,
            "dragonuniverse8248编写 GML5.2 & deepseek指导",
               "基于playwright无头浏览器库，对sillytavern项目进行操作和交互，达成通过机器人远程游玩Sillytavern，以及高于联机脚本的游玩体验貂蝉在一起",
-                "1.6.8")
+                "1.6.9")
 
 
 
@@ -1546,7 +1546,7 @@ class bartender_crawler(Star):
                 import re as _re
                 out = subprocess.run(
                     ["netstat", "-ano"], capture_output=True, text=True, timeout=5,
-                ).stdout
+                ).stdout or ""
                 pid = None
                 for line in out.splitlines():
                     if f":{port}" in line and "LISTENING" in line:

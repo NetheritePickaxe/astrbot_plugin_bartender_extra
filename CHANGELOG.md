@@ -1,5 +1,12 @@
 # 更新日志
 
+## [v1.6.9] — 2026-08-24
+
+### 修复
+- 修复 WebUI「关闭酒馆」/「重启」无效的问题：`stop_tavern` 的 netstat 兜底查杀中，`subprocess.run(...).stdout` 有时返回 `None`，导致 `out.splitlines()` 抛出 `AttributeError`，停止失败且前端弹出「未找到酒馆进程」错误提示。现加上 `or ""` 防御性处理
+
+---
+
 ## [v1.6.8] — 2026-08-24
 
 ### 修复
