@@ -1,4 +1,12 @@
 {
+    "language":{
+        "description":"回复语言",
+        "type": "string",
+        "options": ["zh-CN", "en-US"],
+        "labels": ["简体中文", "English"],
+        "hint": "插件聊天回复与页面后端消息使用的语言，与 WebUI 显示语言相互独立",
+        "default": "zh-CN"
+    },
     "now_chats_name":{
         "description":"当前角色卡",
         "type": "string",
