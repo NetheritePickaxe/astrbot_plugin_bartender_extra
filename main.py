@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import re, json
 import time, aiohttp, platform
-import subprocess, os, shutil, asyncio, functools, sys
+import subprocess, os, shutil, asyncio, functools, sys, zipfile
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
@@ -1063,6 +1063,45 @@ class bartender_crawler(Star):
         except Exception as e:
             logger.error(f"更新角色卡失败：{e}")
             return None
+
+    _export_busy = False
+
+    async def backup_tavern_data(self):
+        """打包内置酒馆 data 目录为 zip；返回 (zip路径或None, 提示消息)"""
+        st_dir = self.plugin_dir / "SillyTavern"
+        st_data = st_dir / "data"
+        if not (st_dir / "server.js").exists() or not st_data.exists():
+            return None, """仅支持插件内置安装的 SillyTavern，未找到内置酒馆数据目录"""
+        try:
+            def _scan_size(path):
+                total = 0
+                for p in path.rglob("*"):
+                    if p.is_file() and "backups" not in p.parts:
+                        try:
+                            total += p.stat().st_size
+                        except OSError:
+                            pass
+                return total
+            total = await asyncio.to_thread(_scan_size, st_data)
+            if total > 2 * 1024 ** 3:
+                return None, f"""数据目录约 {total / 1024 ** 3:.1f} GB，超过 2 GB 上限，请手动备份 SillyTavern/data 目录"""
+            zip_path = self.cache_dir / f"st_backup_{int(time.time())}.zip"
+            for old in self.cache_dir.glob("st_backup_*.zip"):
+                try:
+                    old.unlink()
+                except OSError:
+                    pass
+            def _do_zip():
+                with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for p in st_data.rglob("*"):
+                        if p.is_file() and "backups" not in p.parts:
+                            zf.write(p, p.relative_to(st_dir))
+            await asyncio.to_thread(_do_zip)
+            size_mb = zip_path.stat().st_size / 1024 ** 2
+            return zip_path, f"""已打包酒馆数据目录（{size_mb:.1f} MB）"""
+        except Exception as e:
+            logger.error(f"打包酒馆数据失败：{e}")
+            return None, """打包失败，请查看日志或稍后重试"""
 
     async def open_browser_auto(self, first : bool):
         """低内存占用模式判断开启"""
@@ -2169,7 +2208,26 @@ class bartender_crawler(Star):
     @filter.command("酒导出")
     @_access_required
     async def command_export_chat(self, event: AstrMessageEvent):
-        """导出当前聊天记录为文件发送"""
+        """导出当前聊天记录为文件发送；/酒导出 data 打包内置酒馆数据目录（管理员）"""
+        args = event.message_str.strip().split()
+        if len(args) > 1 and args[1] == "data": # 整库备份：纯文件操作，不占用全局互斥
+            if not event.is_admin():
+                yield event.plain_result("""该子命令仅管理员可用""")
+                return
+            if bartender_crawler._export_busy:
+                yield event.plain_result("""正在打包中，请稍作等待""")
+                return
+            bartender_crawler._export_busy = True
+            try:
+                path, msg = await bartender_crawler.backup_tavern_data(self)
+                if path and path.exists():
+                    yield event.plain_result(msg)
+                    yield event.chain_result([File.fromFileSystem(str(path))])
+                else:
+                    yield event.plain_result(msg)
+            finally:
+                bartender_crawler._export_busy = False
+            return
         if self.status_running:
             self.status_running = False
             try:
