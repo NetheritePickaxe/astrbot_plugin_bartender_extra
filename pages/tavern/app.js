@@ -24,6 +24,7 @@ function applyStatus(info) {
   if (!info) {
     setStatus("未获取到状态信息", "offline");
     setAllButtons({ refresh: true });
+    setStMode("start");
     return;
   }
   stUrl = info.st_url || "";
@@ -35,16 +36,15 @@ function applyStatus(info) {
   _currentInfo = info;
   if (info.reachable) {
     setStatus("酒馆在线", "online");
-    setStMode("running");
     setAllButtons({
       "st-start": false, "st-stop": true, "st-restart": true, install: false,
       "ext-tag": true,
       "export-data": true, uninstall: true, "import-btn": true,
       refresh: true,
     });
+    setStMode("running");
   } else {
     setStatus("酒馆未连接", "offline");
-    setStMode("start");
     if (info.has_bundled_st) {
       setAllButtons({
         "st-start": true, "st-stop": false, "st-restart": false, install: false,
@@ -60,17 +60,18 @@ function applyStatus(info) {
         refresh: true,
       });
     }
+    setStMode("start");
   }
 }
 
 function applyInstallStatus(status) {
-  setStMode("installing");
   setAllButtons({
     "st-start": false, "st-stop": false, "st-restart": false, install: false,
     "ext-tag": false,
     "export-data": false, uninstall: false, "import-btn": false,
     refresh: true,
   });
+  setStMode("installing");
   if (status === "downloading" || status === "starting") {
     setStatus("安装中…", "unknown");
     showMessage("正在下载酒馆…", "info");
@@ -109,6 +110,7 @@ async function pollInstall() {
       setStatus("状态获取失败", "offline");
       showMessage(e.message || "请稍后重试。", "error");
       setAllButtons({ refresh: true });
+      setStMode("start");
     }
   }, 2000);
 }
@@ -129,6 +131,7 @@ async function refreshStatus() {
     setStatus("状态获取失败", "offline");
     showMessage(e.message || "请稍后重试。", "error");
     setAllButtons({ refresh: true });
+    setStMode("start");
   }
 }
 
