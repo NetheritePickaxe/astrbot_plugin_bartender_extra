@@ -18,7 +18,7 @@ function setStatus(text, kind) {
   $("dot").className = "dot " + (kind || "unknown");
 }
 
-const ALL_BUTTONS = ["st-execute", "install", "ext-tag", "export-data", "uninstall", "import-btn", "refresh"];
+const ALL_BUTTONS = ["st-start", "st-stop", "st-restart", "install", "ext-tag", "export-data", "uninstall", "import-btn", "refresh"];
 
 function applyStatus(info) {
   if (!info) {
@@ -35,24 +35,26 @@ function applyStatus(info) {
   _currentInfo = info;
   if (info.reachable) {
     setStatus("酒馆在线", "online");
+    setStMode("running");
     setAllButtons({
-      "st-execute": true, install: false,
+      "st-start": false, "st-stop": true, "st-restart": true, install: false,
       "ext-tag": true,
       "export-data": true, uninstall: true, "import-btn": true,
       refresh: true,
     });
   } else {
     setStatus("酒馆未连接", "offline");
+    setStMode("start");
     if (info.has_bundled_st) {
       setAllButtons({
-        "st-execute": true, install: false,
+        "st-start": true, "st-stop": false, "st-restart": false, install: false,
         "ext-tag": false,
         "export-data": true, uninstall: true, "import-btn": true,
         refresh: true,
       });
     } else {
       setAllButtons({
-        "st-execute": false, install: true,
+        "st-start": false, "st-stop": false, "st-restart": false, install: true,
         "ext-tag": false,
         "export-data": false, uninstall: false, "import-btn": false,
         refresh: true,
@@ -62,8 +64,9 @@ function applyStatus(info) {
 }
 
 function applyInstallStatus(status) {
+  setStMode("installing");
   setAllButtons({
-    "st-execute": false, install: false,
+    "st-start": false, "st-stop": false, "st-restart": false, install: false,
     "ext-tag": false,
     "export-data": false, uninstall: false, "import-btn": false,
     refresh: true,
@@ -129,6 +132,12 @@ async function refreshStatus() {
   }
 }
 
+function setStMode(mode) {
+  $("st-start").classList.toggle("hidden", mode !== "start");
+  $("st-stop").classList.toggle("hidden", mode !== "running");
+  $("st-restart").classList.toggle("hidden", mode !== "running");
+}
+
 function setAllButtons(states) {
   ALL_BUTTONS.forEach((id) => {
     const el = $(id);
@@ -150,30 +159,60 @@ function showMessage(text, kind) {
   }, 5000);
 }
 
-async function executeStAction() {
-  const sel = $("st-action");
-  const btn = $("st-execute");
-  const action = sel.value;
-  const labels = { start: "启动", stop: "关闭", restart: "重启" };
-  const endpoints = { start: "tavern/start", stop: "tavern/stop", restart: "tavern/restart" };
-  const successMsgs = { start: "酒馆已启动", stop: "酒馆已关闭", restart: "酒馆已重启" };
-  const label = labels[action] || "执行";
-  sel.disabled = true;
+async function startTavern() {
+  const btn = $("st-start");
   btn.disabled = true;
-  btn.textContent = label + "中…";
+  btn.textContent = "启动中…";
   try {
-    const r = await bridge.apiPost(endpoints[action], {});
+    const r = await bridge.apiPost("tavern/start", {});
     if (r && r.ok) {
-      showMessage(successMsgs[action] || "操作完成", "success");
+      showMessage("酒馆已启动", "success");
+      await refreshStatus();
     } else {
-      showMessage((r && r.message) || label + "失败", "error");
+      showMessage((r && r.message) || "启动失败", "error");
     }
   } catch (e) {
-    showMessage(e.message || label + "失败", "error");
+    showMessage(e.message || "启动失败", "error");
   } finally {
-    sel.disabled = false;
-    btn.textContent = "执行";
-    await refreshStatus();
+    btn.textContent = "启动";
+  }
+}
+
+async function stopTavern() {
+  const btn = $("st-stop");
+  btn.disabled = true;
+  btn.textContent = "关闭中…";
+  try {
+    const r = await bridge.apiPost("tavern/stop", {});
+    if (r && r.ok) {
+      showMessage("酒馆已关闭", "success");
+      await refreshStatus();
+    } else {
+      showMessage((r && r.message) || "关闭失败", "error");
+    }
+  } catch (e) {
+    showMessage(e.message || "关闭失败", "error");
+  } finally {
+    btn.textContent = "关闭";
+  }
+}
+
+async function restartTavern() {
+  const btn = $("st-restart");
+  btn.disabled = true;
+  btn.textContent = "重启中…";
+  try {
+    const r = await bridge.apiPost("tavern/restart", {});
+    if (r && r.ok) {
+      showMessage("酒馆已重启", "success");
+      await refreshStatus();
+    } else {
+      showMessage((r && r.message) || "重启失败", "error");
+    }
+  } catch (e) {
+    showMessage(e.message || "重启失败", "error");
+  } finally {
+    btn.textContent = "重启";
   }
 }
 
@@ -301,7 +340,9 @@ async function copyAddr() {
 
 function bind() {
   $("refresh").addEventListener("click", refreshStatus);
-  $("st-execute").addEventListener("click", executeStAction);
+  $("st-start").addEventListener("click", startTavern);
+  $("st-stop").addEventListener("click", stopTavern);
+  $("st-restart").addEventListener("click", restartTavern);
   $("install").addEventListener("click", installTavern);
   $("export-data").addEventListener("click", exportData);
   $("uninstall").addEventListener("click", uninstallTavern);
