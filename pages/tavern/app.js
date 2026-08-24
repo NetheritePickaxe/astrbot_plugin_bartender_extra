@@ -166,7 +166,8 @@ function setDropdownOpen(open) {
 
 function setStControl(running) {
   stRunning = running;
-  $("st-execute").classList.toggle("has-caret", running);
+  $("st-execute").classList.toggle("split-main", running);
+  $("st-dd-toggle").classList.toggle("hidden", !running);
   setDropdownOpen(false);
   $("st-execute").textContent = running ? "关闭" : "启动";
 }
@@ -175,8 +176,10 @@ async function executeStAction(action) {
   const conf = ST_ACTIONS[action];
   if (!conf || $("st-execute").disabled) return;
   const btn = $("st-execute");
+  const toggle = $("st-dd-toggle");
   setDropdownOpen(false);
   btn.disabled = true;
+  toggle.disabled = true;
   btn.textContent = conf.label + "中…";
   try {
     const r = await bridge.apiPost(conf.endpoint, {});
@@ -189,6 +192,7 @@ async function executeStAction(action) {
     showMessage(e.message || conf.label + "失败", "error");
   } finally {
     btn.textContent = stRunning ? "关闭" : "启动";
+    toggle.disabled = false;
     await refreshStatus();
   }
 }
@@ -317,18 +321,13 @@ async function copyAddr() {
 
 function bind() {
   $("refresh").addEventListener("click", refreshStatus);
-  $("st-execute").addEventListener("click", (e) => {
+  $("st-execute").addEventListener("click", () => {
     if ($("st-execute").disabled) return;
-    if (!stRunning) {
-      executeStAction("start");
-      return;
-    }
-    const rect = e.currentTarget.getBoundingClientRect();
-    if (e.clientX - rect.left > rect.width * 0.7) {
-      setDropdownOpen($("st-dd-menu").classList.contains("hidden"));
-    } else {
-      executeStAction("stop");
-    }
+    executeStAction(stRunning ? "stop" : "start");
+  });
+  $("st-dd-toggle").addEventListener("click", () => {
+    if ($("st-dd-toggle").classList.contains("hidden")) return;
+    setDropdownOpen($("st-dd-menu").classList.contains("hidden"));
   });
   $("st-dd-menu").querySelectorAll(".dropdown-item").forEach((item) => {
     item.addEventListener("click", () => {

@@ -204,21 +204,21 @@ body {
   align-self: flex-end;
 }
 
-#st-execute {
-  position: relative;
+.split-group {
+  display: inline-flex;
 }
 
-#st-execute.has-caret::after {
-  content: "▼";
-  position: absolute;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 14px;
-  line-height: 1;
+.split-main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.split-caret {
+  padding: 9px 8px;
+  font-size: 15px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
   border-left: 1px solid color-mix(in srgb, var(--primary-text) 40%, transparent);
-  padding-left: 10px;
-  pointer-events: none;
 }
 
 .dropdown-menu {
