@@ -21,6 +21,11 @@ function setStatus(text, kind) {
 const ALL_BUTTONS = ["start", "install", "stop", "restart", "ext-tag", "export-data", "uninstall", "import-btn", "refresh"];
 
 function applyStatus(info) {
+  if (!info) {
+    setStatus("未获取到状态信息", "offline");
+    setAllButtons({ refresh: true });
+    return;
+  }
   stUrl = info.st_url || "";
   $("addr").textContent = stUrl || "—";
   if (info.install_status) {
@@ -33,7 +38,7 @@ function applyStatus(info) {
     setAllButtons({
       start: false, install: false,
       stop: true, restart: true, "ext-tag": true,
-      export-data: true, uninstall: true, "import-btn": true,
+      "export-data": true, uninstall: true, "import-btn": true,
       refresh: true,
     });
   } else {
@@ -42,14 +47,14 @@ function applyStatus(info) {
       setAllButtons({
         start: true, install: false,
         stop: false, restart: false, "ext-tag": false,
-        export-data: true, uninstall: true, "import-btn": true,
+        "export-data": true, uninstall: true, "import-btn": true,
         refresh: true,
       });
     } else {
       setAllButtons({
         start: false, install: true,
         stop: false, restart: false, "ext-tag": false,
-        export-data: false, uninstall: false, "import-btn": false,
+        "export-data": false, uninstall: false, "import-btn": false,
         refresh: true,
       });
     }
@@ -60,7 +65,7 @@ function applyInstallStatus(status) {
   setAllButtons({
     start: false, install: false,
     stop: false, restart: false, "ext-tag": false,
-    export-data: false, uninstall: false, "import-btn": false,
+    "export-data": false, uninstall: false, "import-btn": false,
     refresh: true,
   });
   if (status === "downloading" || status === "starting") {
@@ -100,6 +105,7 @@ async function pollInstall() {
       stopInstallPolling();
       setStatus("状态获取失败", "offline");
       showMessage(e.message || "请稍后重试。", "error");
+      setAllButtons({ refresh: true });
     }
   }, 2000);
 }
@@ -119,6 +125,7 @@ async function refreshStatus() {
   } catch (e) {
     setStatus("状态获取失败", "offline");
     showMessage(e.message || "请稍后重试。", "error");
+    setAllButtons({ refresh: true });
   }
 }
 
