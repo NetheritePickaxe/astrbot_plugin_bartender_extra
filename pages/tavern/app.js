@@ -150,29 +150,34 @@ function showMessage(text, kind) {
   }, 5000);
 }
 
-async function executeStAction() {
-  const sel = $("st-action");
+const ST_ACTIONS = {
+  start: { label: "启动", endpoint: "tavern/start", success: "酒馆已启动" },
+  stop: { label: "关闭", endpoint: "tavern/stop", success: "酒馆已关闭" },
+  restart: { label: "重启", endpoint: "tavern/restart", success: "酒馆已重启" },
+};
+
+function setDropdownOpen(open) {
+  $("st-dd-menu").classList.toggle("hidden", !open);
+}
+
+async function executeStAction(action) {
+  const conf = ST_ACTIONS[action];
+  if (!conf || $("st-execute").disabled) return;
   const btn = $("st-execute");
-  const action = sel.value;
-  const labels = { start: "启动", stop: "关闭", restart: "重启" };
-  const endpoints = { start: "tavern/start", stop: "tavern/stop", restart: "tavern/restart" };
-  const successMsgs = { start: "酒馆已启动", stop: "酒馆已关闭", restart: "酒馆已重启" };
-  const label = labels[action] || "执行";
-  sel.disabled = true;
+  setDropdownOpen(false);
   btn.disabled = true;
-  btn.textContent = label + "中…";
+  $("st-dd-label").textContent = conf.label + "中…";
   try {
-    const r = await bridge.apiPost(endpoints[action], {});
+    const r = await bridge.apiPost(conf.endpoint, {});
     if (r && r.ok) {
-      showMessage(successMsgs[action] || "操作完成", "success");
+      showMessage(conf.success, "success");
     } else {
-      showMessage((r && r.message) || label + "失败", "error");
+      showMessage((r && r.message) || conf.label + "失败", "error");
     }
   } catch (e) {
-    showMessage(e.message || label + "失败", "error");
+    showMessage(e.message || conf.label + "失败", "error");
   } finally {
-    sel.disabled = false;
-    btn.textContent = "执行";
+    $("st-dd-label").textContent = "选择操作";
     await refreshStatus();
   }
 }
@@ -301,7 +306,18 @@ async function copyAddr() {
 
 function bind() {
   $("refresh").addEventListener("click", refreshStatus);
-  $("st-execute").addEventListener("click", executeStAction);
+  $("st-execute").addEventListener("click", () => {
+    if ($("st-execute").disabled) return;
+    setDropdownOpen($("st-dd-menu").classList.contains("hidden"));
+  });
+  $("st-dd-menu").querySelectorAll(".dropdown-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      executeStAction(item.dataset.action);
+    });
+  });
+  document.addEventListener("click", (e) => {
+    if (!$("st-dd").contains(e.target)) setDropdownOpen(false);
+  });
   $("install").addEventListener("click", installTavern);
   $("export-data").addEventListener("click", exportData);
   $("uninstall").addEventListener("click", uninstallTavern);
