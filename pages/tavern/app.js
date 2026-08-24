@@ -5,6 +5,7 @@ let stUrl = "";
 let flashTimer = null;
 let installPollTimer = null;
 let _currentInfo = null;
+let stRunning = false;
 
 function applyLang() {
   try {
@@ -35,6 +36,7 @@ function applyStatus(info) {
   _currentInfo = info;
   if (info.reachable) {
     setStatus("酒馆在线", "online");
+    setStControl(true);
     setAllButtons({
       "st-execute": true, install: false,
       "ext-tag": true,
@@ -43,6 +45,7 @@ function applyStatus(info) {
     });
   } else {
     setStatus("酒馆未连接", "offline");
+    setStControl(false);
     if (info.has_bundled_st) {
       setAllButtons({
         "st-execute": true, install: false,
@@ -62,6 +65,7 @@ function applyStatus(info) {
 }
 
 function applyInstallStatus(status) {
+  setStControl(false);
   setAllButtons({
     "st-execute": false, install: false,
     "ext-tag": false,
@@ -160,6 +164,13 @@ function setDropdownOpen(open) {
   $("st-dd-menu").classList.toggle("hidden", !open);
 }
 
+function setStControl(running) {
+  stRunning = running;
+  $("st-dd-caret").classList.toggle("hidden", !running);
+  setDropdownOpen(false);
+  $("st-dd-label").textContent = running ? "关闭" : "启动";
+}
+
 async function executeStAction(action) {
   const conf = ST_ACTIONS[action];
   if (!conf || $("st-execute").disabled) return;
@@ -177,7 +188,7 @@ async function executeStAction(action) {
   } catch (e) {
     showMessage(e.message || conf.label + "失败", "error");
   } finally {
-    $("st-dd-label").textContent = "选择操作";
+    $("st-dd-label").textContent = stRunning ? "关闭" : "启动";
     await refreshStatus();
   }
 }
@@ -308,6 +319,10 @@ function bind() {
   $("refresh").addEventListener("click", refreshStatus);
   $("st-execute").addEventListener("click", () => {
     if ($("st-execute").disabled) return;
+    if (!stRunning) {
+      executeStAction("start");
+      return;
+    }
     setDropdownOpen($("st-dd-menu").classList.contains("hidden"));
   });
   $("st-dd-menu").querySelectorAll(".dropdown-item").forEach((item) => {
