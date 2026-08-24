@@ -166,18 +166,20 @@ function setDropdownOpen(open) {
 
 function setStControl(running) {
   stRunning = running;
-  $("st-dd-caret").classList.toggle("hidden", !running);
+  $("st-dd-toggle").classList.toggle("hidden", !running);
   setDropdownOpen(false);
-  $("st-dd-label").textContent = running ? "关闭" : "启动";
+  $("st-execute").textContent = running ? "关闭" : "启动";
 }
 
 async function executeStAction(action) {
   const conf = ST_ACTIONS[action];
   if (!conf || $("st-execute").disabled) return;
   const btn = $("st-execute");
+  const toggle = $("st-dd-toggle");
   setDropdownOpen(false);
   btn.disabled = true;
-  $("st-dd-label").textContent = conf.label + "中…";
+  toggle.disabled = true;
+  btn.textContent = conf.label + "中…";
   try {
     const r = await bridge.apiPost(conf.endpoint, {});
     if (r && r.ok) {
@@ -188,7 +190,8 @@ async function executeStAction(action) {
   } catch (e) {
     showMessage(e.message || conf.label + "失败", "error");
   } finally {
-    $("st-dd-label").textContent = stRunning ? "关闭" : "启动";
+    btn.textContent = stRunning ? "关闭" : "启动";
+    toggle.disabled = false;
     await refreshStatus();
   }
 }
@@ -319,10 +322,10 @@ function bind() {
   $("refresh").addEventListener("click", refreshStatus);
   $("st-execute").addEventListener("click", () => {
     if ($("st-execute").disabled) return;
-    if (!stRunning) {
-      executeStAction("start");
-      return;
-    }
+    executeStAction(stRunning ? "stop" : "start");
+  });
+  $("st-dd-toggle").addEventListener("click", () => {
+    if ($("st-dd-toggle").classList.contains("hidden")) return;
     setDropdownOpen($("st-dd-menu").classList.contains("hidden"));
   });
   $("st-dd-menu").querySelectorAll(".dropdown-item").forEach((item) => {
