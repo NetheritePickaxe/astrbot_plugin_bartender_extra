@@ -199,6 +199,34 @@ body {
   filter: none;
 }
 
+.card-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.card-select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-size: 15px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.card-select:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+
+.card-select:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .hidden {
   display: none !important;
 }

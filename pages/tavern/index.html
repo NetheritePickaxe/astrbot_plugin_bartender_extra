@@ -15,36 +15,26 @@
           <span id="status-text" class="status-label">检测中…</span>
           <code id="addr" class="addr">—</code>
           <button id="copy" class="btn-icon" type="button" title="复制地址">复制</button>
+          <button id="refresh" class="btn-icon" type="button" title="刷新状态">刷新</button>
         </div>
       </div>
       <div class="card-grid">
         <div class="card">
-          <div class="card-label">启动酒馆</div>
-          <div class="card-desc">启动当前配置的 SillyTavern 服务</div>
-          <button id="start" class="card-btn primary" disabled>启动</button>
+          <div class="card-label">酒馆控制</div>
+          <div class="card-desc">启动、关闭或重启 SillyTavern 服务</div>
+          <div class="card-action-row">
+            <select id="st-action" class="card-select">
+              <option value="start">启动</option>
+              <option value="stop">关闭</option>
+              <option value="restart">重启</option>
+            </select>
+            <button id="st-execute" class="card-btn primary" disabled>执行</button>
+          </div>
         </div>
-        <div class="card">
-          <div class="card-label">关闭酒馆</div>
-          <div class="card-desc">关闭正在运行的 SillyTavern 服务</div>
-          <button id="stop" class="card-btn" disabled>关闭</button>
-        </div>
-        <div class="card">
-          <div class="card-label">重启酒馆</div>
-          <div class="card-desc">先停止再启动 SillyTavern 服务</div>
-          <button id="restart" class="card-btn" disabled>重启</button>
-        </div>
-      </div>
-      <div class="section-title">服务控制</div>
-      <div class="card-grid">
         <div class="card">
           <div class="card-label">打开外部酒馆</div>
           <div class="card-desc">在新标签页中打开 SillyTavern 界面</div>
           <button id="ext-tag" class="card-btn" disabled>打开</button>
-        </div>
-        <div class="card">
-          <div class="card-label">刷新状态</div>
-          <div class="card-desc">重新检测酒馆连接与状态信息</div>
-          <button id="refresh" class="card-btn">刷新</button>
         </div>
       </div>
       <div class="section-title">安装卸载</div>

@@ -18,7 +18,7 @@ function setStatus(text, kind) {
   $("dot").className = "dot " + (kind || "unknown");
 }
 
-const ALL_BUTTONS = ["start", "install", "stop", "restart", "ext-tag", "export-data", "uninstall", "import-btn", "refresh"];
+const ALL_BUTTONS = ["st-execute", "install", "ext-tag", "export-data", "uninstall", "import-btn", "refresh"];
 
 function applyStatus(info) {
   if (!info) {
@@ -36,8 +36,8 @@ function applyStatus(info) {
   if (info.reachable) {
     setStatus("酒馆在线", "online");
     setAllButtons({
-      start: false, install: false,
-      stop: true, restart: true, "ext-tag": true,
+      "st-execute": true, install: false,
+      "ext-tag": true,
       "export-data": true, uninstall: true, "import-btn": true,
       refresh: true,
     });
@@ -45,15 +45,15 @@ function applyStatus(info) {
     setStatus("酒馆未连接", "offline");
     if (info.has_bundled_st) {
       setAllButtons({
-        start: true, install: false,
-        stop: false, restart: false, "ext-tag": false,
+        "st-execute": true, install: false,
+        "ext-tag": false,
         "export-data": true, uninstall: true, "import-btn": true,
         refresh: true,
       });
     } else {
       setAllButtons({
-        start: false, install: true,
-        stop: false, restart: false, "ext-tag": false,
+        "st-execute": false, install: true,
+        "ext-tag": false,
         "export-data": false, uninstall: false, "import-btn": false,
         refresh: true,
       });
@@ -63,8 +63,8 @@ function applyStatus(info) {
 
 function applyInstallStatus(status) {
   setAllButtons({
-    start: false, install: false,
-    stop: false, restart: false, "ext-tag": false,
+    "st-execute": false, install: false,
+    "ext-tag": false,
     "export-data": false, uninstall: false, "import-btn": false,
     refresh: true,
   });
@@ -150,23 +150,30 @@ function showMessage(text, kind) {
   }, 5000);
 }
 
-async function startTavern() {
-  const btn = $("start");
+async function executeStAction() {
+  const sel = $("st-action");
+  const btn = $("st-execute");
+  const action = sel.value;
+  const labels = { start: "启动", stop: "关闭", restart: "重启" };
+  const endpoints = { start: "tavern/start", stop: "tavern/stop", restart: "tavern/restart" };
+  const successMsgs = { start: "酒馆已启动", stop: "酒馆已关闭", restart: "酒馆已重启" };
+  const label = labels[action] || "执行";
+  sel.disabled = true;
   btn.disabled = true;
-  btn.textContent = "启动中…";
+  btn.textContent = label + "中…";
   try {
-    const r = await bridge.apiPost("tavern/start", {});
+    const r = await bridge.apiPost(endpoints[action], {});
     if (r && r.ok) {
-      showMessage("酒馆已启动", "success");
-      await refreshStatus();
+      showMessage(successMsgs[action] || "操作完成", "success");
     } else {
-      showMessage((r && r.message) || "启动失败", "error");
+      showMessage((r && r.message) || label + "失败", "error");
     }
   } catch (e) {
-    showMessage(e.message || "启动失败", "error");
+    showMessage(e.message || label + "失败", "error");
   } finally {
-    btn.disabled = false;
-    btn.textContent = "启动";
+    sel.disabled = false;
+    btn.textContent = "执行";
+    await refreshStatus();
   }
 }
 
@@ -188,46 +195,6 @@ async function installTavern() {
   } finally {
     btn.disabled = false;
     btn.textContent = "安装";
-  }
-}
-
-async function stopTavern() {
-  const btn = $("stop");
-  btn.disabled = true;
-  btn.textContent = "关闭中…";
-  try {
-    const r = await bridge.apiPost("tavern/stop", {});
-    if (r && r.ok) {
-      showMessage("酒馆已关闭", "success");
-      await refreshStatus();
-    } else {
-      showMessage((r && r.message) || "关闭失败", "error");
-    }
-  } catch (e) {
-    showMessage(e.message || "关闭失败", "error");
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "关闭";
-  }
-}
-
-async function restartTavern() {
-  const btn = $("restart");
-  btn.disabled = true;
-  btn.textContent = "重启中…";
-  try {
-    const r = await bridge.apiPost("tavern/restart", {});
-    if (r && r.ok) {
-      showMessage("酒馆已重启", "success");
-      await refreshStatus();
-    } else {
-      showMessage((r && r.message) || "重启失败", "error");
-    }
-  } catch (e) {
-    showMessage(e.message || "重启失败", "error");
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "重启";
   }
 }
 
@@ -334,10 +301,8 @@ async function copyAddr() {
 
 function bind() {
   $("refresh").addEventListener("click", refreshStatus);
-  $("start").addEventListener("click", startTavern);
+  $("st-execute").addEventListener("click", executeStAction);
   $("install").addEventListener("click", installTavern);
-  $("stop").addEventListener("click", stopTavern);
-  $("restart").addEventListener("click", restartTavern);
   $("export-data").addEventListener("click", exportData);
   $("uninstall").addEventListener("click", uninstallTavern);
   $("import-btn").addEventListener("click", importData);
