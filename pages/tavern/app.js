@@ -5,7 +5,6 @@ let stUrl = "";
 let flashTimer = null;
 let installPollTimer = null;
 let _currentInfo = null;
-let stRunning = false;
 
 function applyLang() {
   try {
@@ -36,7 +35,6 @@ function applyStatus(info) {
   _currentInfo = info;
   if (info.reachable) {
     setStatus("酒馆在线", "online");
-    setStControl(true);
     setAllButtons({
       "st-execute": true, install: false,
       "ext-tag": true,
@@ -45,7 +43,6 @@ function applyStatus(info) {
     });
   } else {
     setStatus("酒馆未连接", "offline");
-    setStControl(false);
     if (info.has_bundled_st) {
       setAllButtons({
         "st-execute": true, install: false,
@@ -65,7 +62,6 @@ function applyStatus(info) {
 }
 
 function applyInstallStatus(status) {
-  setStControl(false);
   setAllButtons({
     "st-execute": false, install: false,
     "ext-tag": false,
@@ -154,45 +150,29 @@ function showMessage(text, kind) {
   }, 5000);
 }
 
-const ST_ACTIONS = {
-  start: { label: "启动", endpoint: "tavern/start", success: "酒馆已启动" },
-  stop: { label: "关闭", endpoint: "tavern/stop", success: "酒馆已关闭" },
-  restart: { label: "重启", endpoint: "tavern/restart", success: "酒馆已重启" },
-};
-
-function setDropdownOpen(open) {
-  $("st-dd-menu").classList.toggle("hidden", !open);
-}
-
-function setStControl(running) {
-  stRunning = running;
-  $("st-execute").classList.toggle("split-main", running);
-  $("st-dd-toggle").classList.toggle("hidden", !running);
-  setDropdownOpen(false);
-  $("st-execute").textContent = running ? "关闭" : "启动";
-}
-
-async function executeStAction(action) {
-  const conf = ST_ACTIONS[action];
-  if (!conf || $("st-execute").disabled) return;
+async function executeStAction() {
+  const sel = $("st-action");
   const btn = $("st-execute");
-  const toggle = $("st-dd-toggle");
-  setDropdownOpen(false);
+  const action = sel.value;
+  const labels = { start: "启动", stop: "关闭", restart: "重启" };
+  const endpoints = { start: "tavern/start", stop: "tavern/stop", restart: "tavern/restart" };
+  const successMsgs = { start: "酒馆已启动", stop: "酒馆已关闭", restart: "酒馆已重启" };
+  const label = labels[action] || "执行";
+  sel.disabled = true;
   btn.disabled = true;
-  toggle.disabled = true;
-  btn.textContent = conf.label + "中…";
+  btn.textContent = label + "中…";
   try {
-    const r = await bridge.apiPost(conf.endpoint, {});
+    const r = await bridge.apiPost(endpoints[action], {});
     if (r && r.ok) {
-      showMessage(conf.success, "success");
+      showMessage(successMsgs[action] || "操作完成", "success");
     } else {
-      showMessage((r && r.message) || conf.label + "失败", "error");
+      showMessage((r && r.message) || label + "失败", "error");
     }
   } catch (e) {
-    showMessage(e.message || conf.label + "失败", "error");
+    showMessage(e.message || label + "失败", "error");
   } finally {
-    btn.textContent = stRunning ? "关闭" : "启动";
-    toggle.disabled = false;
+    sel.disabled = false;
+    btn.textContent = "执行";
     await refreshStatus();
   }
 }
@@ -321,22 +301,7 @@ async function copyAddr() {
 
 function bind() {
   $("refresh").addEventListener("click", refreshStatus);
-  $("st-execute").addEventListener("click", () => {
-    if ($("st-execute").disabled) return;
-    executeStAction(stRunning ? "stop" : "start");
-  });
-  $("st-dd-toggle").addEventListener("click", () => {
-    if ($("st-dd-toggle").classList.contains("hidden")) return;
-    setDropdownOpen($("st-dd-menu").classList.contains("hidden"));
-  });
-  $("st-dd-menu").querySelectorAll(".dropdown-item").forEach((item) => {
-    item.addEventListener("click", () => {
-      executeStAction(item.dataset.action);
-    });
-  });
-  document.addEventListener("click", (e) => {
-    if (!$("st-dd").contains(e.target)) setDropdownOpen(false);
-  });
+  $("st-execute").addEventListener("click", executeStAction);
   $("install").addEventListener("click", installTavern);
   $("export-data").addEventListener("click", exportData);
   $("uninstall").addEventListener("click", uninstallTavern);

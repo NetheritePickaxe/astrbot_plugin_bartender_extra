@@ -22,14 +22,13 @@
         <div class="card">
           <div class="card-label">酒馆控制</div>
           <div class="card-desc">根据酒馆运行状态执行启动、关闭或重启</div>
-          <div class="dropdown" id="st-dd">
-            <div class="split-group">
-              <button id="st-execute" class="card-btn primary" disabled>启动</button>
-              <button id="st-dd-toggle" class="card-btn primary split-caret hidden" type="button">▼</button>
-            </div>
-            <div id="st-dd-menu" class="dropdown-menu hidden">
-              <button type="button" class="dropdown-item" data-action="restart">重启</button>
-            </div>
+          <div class="card-action-row">
+            <select id="st-action" class="card-select">
+              <option value="start">启动</option>
+              <option value="stop">关闭</option>
+              <option value="restart">重启</option>
+            </select>
+            <button id="st-execute" class="card-btn primary" disabled>执行</button>
           </div>
         </div>
         <div class="card">
