@@ -1,5 +1,14 @@
 # 更新日志
 
+## [v1.7.3] — 2026-09-01
+
+### 变更
+- metadata.yaml 清理：`desc` 简化为「调酒师fork增强版」，`author` 简化为 NetheritePickaxe
+- 新增 `astrbot_version`（`>=3.4.0`）与 `support_platforms`（空，全平台支持）字段
+- 版本号升至 v1.7.3
+
+---
+
 ## [v1.7.2] — 2026-08-24
 
 ### 新增

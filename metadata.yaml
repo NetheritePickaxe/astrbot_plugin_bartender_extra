@@ -2,7 +2,7 @@ name: astrbot_plugin_bartender_extra
 display_name: 调酒师-增强
 desc: 调酒师fork增强版
 short_desc: 通过机器人远程游玩 SillyTavern
-version: v1.7.2
+version: v1.7.3
 author: NetheritePickaxe
 repo: "https://github.com/NetheritePickaxe/astrbot_plugin_bartender_extra"
 astrbot_version: ">=3.4.0"
